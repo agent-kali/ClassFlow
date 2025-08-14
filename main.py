@@ -1,10 +1,14 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi import UploadFile, File, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
+import os
+import subprocess
 
 # Use the same database as the import script
 DATABASE_URL = "sqlite:///data/schedule_test.db"
@@ -45,6 +49,7 @@ class Lesson(Base):
     day = Column(String)
     start_time = Column(String)
     end_time = Column(String)
+    room = Column(String)
 
 # Сериализация результатов
 class LessonOut(BaseModel):
@@ -55,6 +60,7 @@ class LessonOut(BaseModel):
     class_code: str
     teacher_name: str
     campus_name: str
+    room: Optional[str] = None
     duration_minutes: int  # Added for convenience
 
     class Config:
@@ -62,12 +68,41 @@ class LessonOut(BaseModel):
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Ensure useful indexes exist
 @app.on_event("startup")
 def ensure_indexes() -> None:
     with engine.connect() as conn:
+        # Ensure 'room' column exists (SQLite allows ADD COLUMN)
+        try:
+            res = conn.execute(text("PRAGMA table_info(lesson)")).fetchall()
+            has_room = any(getattr(r, "name", None) == "room" or (isinstance(r, tuple) and len(r) > 1 and r[1] == "room") for r in res)
+            if not has_room:
+                conn.execute(text("ALTER TABLE lesson ADD COLUMN room TEXT"))
+        except Exception:
+            # If the table doesn't exist yet, ignore; importer will create it
+            pass
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lesson_teacher_week_day_time ON lesson(teacher_id, week, day, start_time, end_time)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lesson_class_week_day_time ON lesson(class_id, week, day, start_time, end_time)"))
+        try:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lesson_room ON lesson(room)"))
+        except Exception:
+            # Skip if column not present (e.g., before first import)
+            pass
+        try:
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uniq_lesson ON lesson(class_id, teacher_id, week, day, start_time, end_time)"))
+        except Exception:
+            pass
         conn.commit()
 
 # DB session dependency
@@ -181,6 +216,7 @@ def get_teacher_schedule(
             class_code=(cls.code_new or cls.code_old),
             teacher_name=teacher.name,
             campus_name=cls.campus_name,
+            room=getattr(lesson, 'room', None),
             duration_minutes=30  # Each slot is 30 minutes
         )
         for lesson, cls, teacher in rows
@@ -236,6 +272,7 @@ def get_class_schedule(
             class_code=(cls.code_new or cls.code_old),
             teacher_name=teacher.name,
             campus_name=cls.campus_name,
+            room=getattr(lesson, 'room', None),
             duration_minutes=30  # Each slot is 30 minutes
         )
         for lesson, cls, teacher in rows
@@ -264,3 +301,20 @@ def list_teachers(db: Session = Depends(get_db)):
 def list_classes(db: Session = Depends(get_db)):
     classes = db.query(ClassModel).all()
     return [{"class_id": c.class_id, "name": c.name, "code_new": c.code_new, "code_old": c.code_old} for c in classes]
+
+@app.post("/upload")
+async def upload_schedule(file: UploadFile = File(...), background_tasks: BackgroundTasks = BackgroundTasks()):
+    os.makedirs("data", exist_ok=True)
+    dest = os.path.join("data", "Schedule.xlsx")
+    content = await file.read()
+    with open(dest, "wb") as f:
+        f.write(content)
+
+    def run_import() -> None:
+        try:
+            subprocess.run(["python", "inspect_schedule.py"], check=False)
+        except Exception:
+            pass
+
+    background_tasks.add_task(run_import)
+    return {"status": "queued", "saved_to": dest}

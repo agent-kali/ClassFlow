@@ -16,6 +16,7 @@ dfs = {name: pd.read_excel(file_path, sheet_name=name, header=None)
 english_name_pattern = re.compile(r'^(Mr|Ms|Mrs)\s+[A-Za-z]+$')
 
 campuses, teachers, classes, lessons = [], set(), [], []
+slot_keys = set()
 
 for sheet_name, df in dfs.items():
     campus = sheet_name.split()[0]
@@ -119,6 +120,7 @@ for sheet_name, df in dfs.items():
             
             # Teacher heuristic: choose the line that is not time and not day/week label
             teacher = None
+            room = None
             for idx, ln in enumerate(lines):
                 if idx == time_idx:
                     continue
@@ -131,8 +133,14 @@ for sheet_name, df in dfs.items():
                     continue
                 if re.fullmatch(r"\(\d{2}/\d{2}-\d{2}/\d{2}\)", ln):
                     continue
-                teacher = ln
-                break
+                if teacher is None:
+                    teacher = ln
+                    continue
+                # try to detect room on subsequent lines
+                m_room = re.search(r"\b(?:Room|Rm|Cab|Aud|Aula)?\s*([A-Za-z]?[0-9]{1,4}[A-Za-z]?)\b", ln, flags=re.IGNORECASE)
+                if m_room and room is None:
+                    room = m_room.group(1)
+                # keep scanning remaining lines for potential room hints
             if not teacher or not class_code or not week or not day:
                 continue
 
@@ -147,7 +155,8 @@ for sheet_name, df in dfs.items():
                 'timerange': f"{start_s}-{end_s}",
                 'row': i,
                 'col': col_idx,
-                'content_key': lesson_content_key
+                'content_key': lesson_content_key,
+                'room': room,
             }
             all_lessons_found.append(lesson_info)
 
@@ -186,6 +195,7 @@ for sheet_name, df in dfs.items():
         day = lesson['day']
         teacher = lesson['teacher']
         timerange = lesson['timerange']
+        room = lesson.get('room')
         
         # Normalize time "18h30" → "18:30"
         start_s, end_s = [t.strip().replace('h', ':') for t in timerange.split('-', 1)]
@@ -204,15 +214,27 @@ for sheet_name, df in dfs.items():
         curr = t0
         while curr < t1:
             nxt = curr + slot
-            lessons.append({
-                "campus_name": campus,
-                "class_code": class_code,
-                "teacher_name": teacher,
-                "week": week,
-                "day": day,
-                "start_time": curr.strftime('%H:%M'),
-                "end_time":   nxt.strftime('%H:%M')
-            })
+            key = (
+                campus,
+                class_code,
+                teacher,
+                week,
+                day,
+                curr.strftime('%H:%M'),
+                nxt.strftime('%H:%M'),
+            )
+            if key not in slot_keys:
+                lessons.append({
+                    "campus_name": campus,
+                    "class_code": class_code,
+                    "teacher_name": teacher,
+                    "week": week,
+                    "day": day,
+                    "start_time": curr.strftime('%H:%M'),
+                    "end_time":   nxt.strftime('%H:%M'),
+                    "room": room,
+                })
+                slot_keys.add(key)
             curr = nxt
         
         unique_lessons_processed += 1
@@ -230,7 +252,7 @@ teachers_df = pd.DataFrame(list(teachers), columns=["name","is_foreign"])
 classes_df = pd.DataFrame(classes, columns=["campus_name","code_old","code_new","name","unique_key"])
 classes_df = classes_df.drop_duplicates(subset=["unique_key"]).drop(columns=["unique_key"]).reset_index(drop=True)
 
-lessons_df = pd.DataFrame(lessons, columns=["campus_name","class_code","teacher_name","week","day","start_time","end_time"])
+lessons_df = pd.DataFrame(lessons, columns=["campus_name","class_code","teacher_name","week","day","start_time","end_time","room"])
 
 # Check final duplicates in lessons_df
 final_dups = lessons_df[lessons_df.duplicated(subset=["campus_name","class_code","teacher_name","week","day","start_time","end_time"], keep=False)]
@@ -302,7 +324,9 @@ if not lessons_df.empty:
         print(f"Warning: {len(unmatched)} lessons could not be fully matched")
 
     # Final data
-    final = df[["class_id","teacher_id","week","day","start_time","end_time"]].dropna().reset_index(drop=True)
+    # carry forward optional room
+    df_room = df.get("room") if "room" in df.columns else None
+    final = df[["class_id","teacher_id","week","day","start_time","end_time","room"]].dropna(subset=["class_id","teacher_id","week","day","start_time","end_time"]).reset_index(drop=True)
     
     # Last duplicate check
     final_duplicates = final[final.duplicated(subset=["class_id","teacher_id","week","day","start_time","end_time"], keep=False)]

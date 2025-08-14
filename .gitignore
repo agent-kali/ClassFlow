@@ -5,3 +5,12 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+ 
+# Data artifacts
+data/schedule_test.db
+data/*.xlsx
+
+# Frontend artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/.env

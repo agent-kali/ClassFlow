@@ -1,5 +1,7 @@
 # E‑Home Schedule API
 
+Internal tool to import E-Home school schedules into a queryable API for teachers and administrators.
+
 Import class schedules from Excel into SQLite and expose a FastAPI service to query teacher/class timetables. Includes optional grouping of consecutive 30‑minute slots into longer sessions.
 
 ## Features
