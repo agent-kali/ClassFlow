@@ -7,6 +7,7 @@ export type LessonOut = {
   teacher_name: string;
   campus_name: string;
   room?: string | null;
+  co_teachers?: string[] | null;
   duration_minutes: number;
 };
 

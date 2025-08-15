@@ -11,6 +11,9 @@ Import class schedules from Excel into SQLite and expose a FastAPI service to qu
 - Store data in SQLite (`data/schedule_test.db`)
 - FastAPI endpoints to query by teacher or class
 - Filters: week, day, campus; optional grouping of adjacent slots
+- File upload endpoint for importing new schedules
+- Room information parsing and display
+- Comprehensive logging and error handling
 - Helpful debug endpoints to list teachers and classes
 
 ## Project structure
@@ -33,6 +36,7 @@ uvicorn
 sqlalchemy
 pandas
 openpyxl
+python-multipart  # For file uploads
 ```
 
 ## Setup
@@ -47,7 +51,7 @@ source venv/bin/activate  # Windows: venv\\Scripts\\activate
 2) Install dependencies:
 
 ```bash
-pip install fastapi uvicorn sqlalchemy pandas openpyxl
+pip install -r requirements.txt
 ```
 
 ## Prepare the data
@@ -91,6 +95,7 @@ All responses use the same shape for lesson entries:
   "class_code": "E1-ABC",
   "teacher_name": "Mr Smith",
   "campus_name": "E1",
+  "room": "A101",
   "duration_minutes": 30
 }
 ```
@@ -145,6 +150,22 @@ List all classes with IDs.
 curl "http://localhost:8000/classes"
 ```
 
+### POST /upload
+
+Upload a new Excel schedule file for processing.
+
+```bash
+curl -F "file=@data/Schedule.xlsx" http://localhost:8000/upload
+```
+
+### GET /health
+
+Health check endpoint.
+
+```bash
+curl "http://localhost:8000/health"
+```
+
 ## Grouping logic
 
 When `grouped=true`, consecutive 30‑minute slots are merged into a single session if they are contiguous in time and share the same campus, class, teacher, week and day.
@@ -154,13 +175,42 @@ When `grouped=true`, consecutive 30‑minute slots are merged into a single sess
 - 404 on queries: Make sure you ran `inspect_schedule.py` and the DB `data/schedule_test.db` exists.
 - Empty results: Check `teacher_id`/`class_id` using `/teachers` and `/classes` endpoints.
 - Excel format differences: Update `sheet_names` and adjust parsing heuristics in `inspect_schedule.py` as needed (week/day detection, time formats, etc.).
-- Duplicate slots reported by the importer: The script prints diagnostics to help locate duplicates by content and position.
+- Duplicate slots reported by the importer: The script logs diagnostics to help locate duplicates by content and position.
+- Upload timeout: Large files may timeout after 5 minutes during background processing.
+- Performance: The API includes optimized queries and proper indexing for fast responses.
+
+## Frontend
+
+The project includes a React + TypeScript frontend with Tailwind CSS.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open http://localhost:5173 to access the teacher timeline interface.
 
 ## Notes
 
-- The importer normalizes time ranges into 30‑minute slots.
+- The importer normalizes time ranges into 30‑minute slots with early duplicate prevention.
 - The API creates useful indexes on `lesson` for faster filtering.
+- Room information is automatically parsed from lesson cells when available.
 - The database is overwritten each time you run the importer.
+- All deprecation warnings have been fixed for SQLAlchemy 2.0 and Pydantic v2.
+- Comprehensive logging provides detailed import progress and error reporting.
+
+## License
+
+## Performance Optimizations
+
+- ✅ Eliminated duplicate lesson detection at parse time
+- ✅ Database indexes on all query columns
+- ✅ Unique constraints prevent data corruption
+- ✅ Extracted common query logic to reduce code duplication
+- ✅ Proper error handling and logging throughout
+- ✅ File upload validation and size limits
+- ✅ Background processing for import tasks
 
 ## License
 

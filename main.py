@@ -1,17 +1,27 @@
-from fastapi import FastAPI, Depends, HTTPException
-from fastapi import UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Tuple
 from datetime import datetime, timedelta
+from contextlib import asynccontextmanager
 import os
 import subprocess
+import logging
 
-# Use the same database as the import script
-DATABASE_URL = "sqlite:///data/schedule_test.db"
+# Configuration
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/schedule_test.db")
+CORS_ORIGINS = [
+    "http://localhost:5173", "http://127.0.0.1:5173",
+    "http://localhost:5174", "http://127.0.0.1:5174", 
+    "http://localhost:5175", "http://127.0.0.1:5175"
+]
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 engine = create_engine(
     DATABASE_URL,
@@ -51,7 +61,7 @@ class Lesson(Base):
     end_time = Column(String)
     room = Column(String)
 
-# Сериализация результатов
+# Pydantic models
 class LessonOut(BaseModel):
     week: int
     day: str
@@ -61,49 +71,67 @@ class LessonOut(BaseModel):
     teacher_name: str
     campus_name: str
     room: Optional[str] = None
+    co_teachers: Optional[List[str]] = None
     duration_minutes: int  # Added for convenience
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    ensure_indexes()
+    yield
+    # Shutdown (if needed)
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
-# Ensure useful indexes exist
-@app.on_event("startup")
+# Remove duplicate lifespan definition
+
 def ensure_indexes() -> None:
-    with engine.connect() as conn:
-        # Ensure 'room' column exists (SQLite allows ADD COLUMN)
-        try:
-            res = conn.execute(text("PRAGMA table_info(lesson)")).fetchall()
-            has_room = any(getattr(r, "name", None) == "room" or (isinstance(r, tuple) and len(r) > 1 and r[1] == "room") for r in res)
-            if not has_room:
-                conn.execute(text("ALTER TABLE lesson ADD COLUMN room TEXT"))
-        except Exception:
-            # If the table doesn't exist yet, ignore; importer will create it
-            pass
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lesson_teacher_week_day_time ON lesson(teacher_id, week, day, start_time, end_time)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lesson_class_week_day_time ON lesson(class_id, week, day, start_time, end_time)"))
-        try:
-            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lesson_room ON lesson(room)"))
-        except Exception:
-            # Skip if column not present (e.g., before first import)
-            pass
-        try:
-            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uniq_lesson ON lesson(class_id, teacher_id, week, day, start_time, end_time)"))
-        except Exception:
-            pass
-        conn.commit()
+    """Ensure database schema and indexes exist"""
+    try:
+        with engine.connect() as conn:
+            # Ensure 'room' column exists (SQLite allows ADD COLUMN)
+            try:
+                res = conn.execute(text("PRAGMA table_info(lesson)")).fetchall()
+                has_room = any(
+                    getattr(r, "name", None) == "room" or 
+                    (isinstance(r, tuple) and len(r) > 1 and r[1] == "room") 
+                    for r in res
+                )
+                if not has_room:
+                    conn.execute(text("ALTER TABLE lesson ADD COLUMN room TEXT"))
+                    logger.info("Added room column to lesson table")
+            except Exception as e:
+                logger.warning(f"Could not check/add room column: {e}")
+            
+            # Create indexes
+            indexes = [
+                "CREATE INDEX IF NOT EXISTS idx_lesson_teacher_week_day_time ON lesson(teacher_id, week, day, start_time, end_time)",
+                "CREATE INDEX IF NOT EXISTS idx_lesson_class_week_day_time ON lesson(class_id, week, day, start_time, end_time)",
+                "CREATE INDEX IF NOT EXISTS idx_lesson_room ON lesson(room)",
+                "CREATE UNIQUE INDEX IF NOT EXISTS uniq_lesson ON lesson(class_id, teacher_id, week, day, start_time, end_time)"
+            ]
+            
+            for idx_sql in indexes:
+                try:
+                    conn.execute(text(idx_sql))
+                except Exception as e:
+                    logger.warning(f"Could not create index: {e}")
+            
+            conn.commit()
+            logger.info("Database indexes ensured")
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
 
 # DB session dependency
 def get_db():
@@ -113,7 +141,7 @@ def get_db():
     finally:
         db.close()
 
-def group_consecutive_lessons(lessons):
+def group_consecutive_lessons(lessons: List[LessonOut]) -> List[LessonOut]:
     """Group consecutive 30-minute slots into longer sessions"""
     if not lessons:
         return []
@@ -136,48 +164,77 @@ def group_consecutive_lessons(lessons):
         else:
             # Finalize current group
             if current_group:
-                first = current_group[0]
-                last = current_group[-1]
-                
-                # Calculate duration
-                start_time = datetime.strptime(first.start_time, '%H:%M')
-                end_time = datetime.strptime(last.end_time, '%H:%M')
-                duration = int((end_time - start_time).total_seconds() / 60)
-                
-                grouped.append(LessonOut(
-                    week=first.week,
-                    day=first.day,
-                    start_time=first.start_time,
-                    end_time=last.end_time,
-                    class_code=first.class_code,
-                    teacher_name=first.teacher_name,
-                    campus_name=first.campus_name,
-                    duration_minutes=duration
-                ))
+                grouped.append(_create_grouped_lesson(current_group))
             
             current_group = [lesson]
     
     # Don't forget the last group
     if current_group:
-        first = current_group[0]
-        last = current_group[-1]
-        
-        start_time = datetime.strptime(first.start_time, '%H:%M')
-        end_time = datetime.strptime(last.end_time, '%H:%M')
-        duration = int((end_time - start_time).total_seconds() / 60)
-        
-        grouped.append(LessonOut(
-            week=first.week,
-            day=first.day,
-            start_time=first.start_time,
-            end_time=last.end_time,
-            class_code=first.class_code,
-            teacher_name=first.teacher_name,
-            campus_name=first.campus_name,
-            duration_minutes=duration
-        ))
+        grouped.append(_create_grouped_lesson(current_group))
     
     return grouped
+
+def _create_grouped_lesson(group: List[LessonOut]) -> LessonOut:
+    """Helper to create a grouped lesson from consecutive slots"""
+    first, last = group[0], group[-1]
+    start_time = datetime.strptime(first.start_time, '%H:%M')
+    end_time = datetime.strptime(last.end_time, '%H:%M')
+    duration = int((end_time - start_time).total_seconds() / 60)
+    
+    return LessonOut(
+        week=first.week,
+        day=first.day,
+        start_time=first.start_time,
+        end_time=last.end_time,
+        class_code=first.class_code,
+        teacher_name=first.teacher_name,
+        campus_name=first.campus_name,
+        room=first.room,
+        duration_minutes=duration
+    )
+
+def _build_lessons_from_rows(
+    rows,
+    co_map: Optional[Dict[Tuple[int, int, str, str, str], List[str]]] = None,
+    exclude_teacher: Optional[str] = None,
+) -> List[LessonOut]:
+    """Convert DB rows to LessonOut objects, optionally attaching co-teachers"""
+    items: List[LessonOut] = []
+    for lesson, cls, teacher in rows:
+        key = (cls.class_id, lesson.week, lesson.day, lesson.start_time, lesson.end_time)
+        co_list = None
+        if co_map is not None and key in co_map:
+            names = co_map[key]
+            if exclude_teacher is not None:
+                names = [n for n in names if n != exclude_teacher]
+            co_list = names or None
+
+        items.append(
+            LessonOut(
+                week=lesson.week,
+                day=lesson.day,
+                start_time=lesson.start_time,
+                end_time=lesson.end_time,
+                class_code=(cls.code_new or cls.code_old),
+                teacher_name=teacher.name,
+                campus_name=cls.campus_name,
+                room=getattr(lesson, 'room', None),
+                co_teachers=co_list,
+                duration_minutes=30,
+            )
+        )
+    return items
+
+def _deduplicate_lessons(lessons: List[LessonOut]) -> List[LessonOut]:
+    """Remove duplicate lessons"""
+    seen, unique = set(), []
+    for item in lessons:
+        key = (item.week, item.day, item.start_time, item.end_time, 
+               item.class_code, item.teacher_name, item.campus_name)
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+    return unique
 
 @app.get("/my/{teacher_id}", response_model=List[LessonOut])
 def get_teacher_schedule(
@@ -187,53 +244,54 @@ def get_teacher_schedule(
     campus: Optional[str] = None,
     grouped: bool = False,
     db: Session = Depends(get_db)
-):
-    query = (
-        db.query(Lesson, ClassModel, Teacher)
-        .join(ClassModel, Lesson.class_id == ClassModel.class_id)
-        .join(Teacher, Lesson.teacher_id == Teacher.teacher_id)
-        .filter(Lesson.teacher_id == teacher_id)
-    )
-
-    if week is not None:
-        query = query.filter(Lesson.week == week)
-    if day is not None:
-        query = query.filter(Lesson.day == day)
-    if campus is not None:
-        query = query.filter(ClassModel.campus_name == campus)
-
-    rows = query.order_by(Lesson.week, Lesson.day, Lesson.start_time).all()
-
+) -> List[LessonOut]:
+    """Get schedule for a specific teacher"""
+    # Validate teacher exists
+    teacher_exists = db.query(Teacher).filter(Teacher.teacher_id == teacher_id).first()
+    if not teacher_exists:
+        raise HTTPException(404, f"Teacher with id {teacher_id} not found")
+    
+    rows = _get_schedule_rows(db, teacher_id=teacher_id, week=week, day=day, campus=campus)
+    
+    # If no rows, return an empty list (better UX for frontend)
     if not rows:
-        raise HTTPException(404, f"No lessons found for teacher_id={teacher_id}")
+        return []
     
-    lessons = [
-        LessonOut(
-            week=lesson.week,
-            day=lesson.day,
-            start_time=lesson.start_time,
-            end_time=lesson.end_time,
-            class_code=(cls.code_new or cls.code_old),
-            teacher_name=teacher.name,
-            campus_name=cls.campus_name,
-            room=getattr(lesson, 'room', None),
-            duration_minutes=30  # Each slot is 30 minutes
-        )
-        for lesson, cls, teacher in rows
+    # Build co-teacher map for the same class/week/day/time slots
+    # Gather keys from selected teacher's rows
+    keys: List[Tuple[int, int, str, str, str]] = [
+        (cls.class_id, lesson.week, lesson.day, lesson.start_time, lesson.end_time)
+        for lesson, cls, _ in rows
     ]
+    if keys:
+        class_ids = {k[0] for k in keys}
+        weeks = {k[1] for k in keys}
+        days = {k[2] for k in keys}
+        starts = {k[3] for k in keys}
+        ends = {k[4] for k in keys}
 
-    # Deduplicate before returning
-    seen, uniq = set(), []
-    for item in lessons:
-        key = (item.week, item.day, item.start_time, item.end_time, item.class_code, item.teacher_name, item.campus_name)
-        if key not in seen:
-            seen.add(key)
-            uniq.append(item)
+        others = (
+            db.query(Lesson, ClassModel, Teacher)
+            .join(ClassModel, Lesson.class_id == ClassModel.class_id)
+            .join(Teacher, Lesson.teacher_id == Teacher.teacher_id)
+            .filter(Lesson.class_id.in_(class_ids))
+            .filter(Lesson.week.in_(weeks))
+            .filter(Lesson.day.in_(days))
+            .filter(Lesson.start_time.in_(starts))
+            .filter(Lesson.end_time.in_(ends))
+            .all()
+        )
+        co_map: Dict[Tuple[int, int, str, str, str], List[str]] = {}
+        for l, c, t in others:
+            k = (c.class_id, l.week, l.day, l.start_time, l.end_time)
+            co_map.setdefault(k, []).append(t.name)
+    else:
+        co_map = {}
+
+    lessons = _build_lessons_from_rows(rows, co_map=co_map, exclude_teacher=teacher_exists.name)
+    unique_lessons = _deduplicate_lessons(lessons)
     
-    if grouped:
-        return group_consecutive_lessons(uniq)
-    
-    return uniq
+    return group_consecutive_lessons(unique_lessons) if grouped else unique_lessons
 
 @app.get("/class/{class_id}", response_model=List[LessonOut])
 def get_class_schedule(
@@ -243,78 +301,112 @@ def get_class_schedule(
     campus: Optional[str] = None,
     grouped: bool = False,
     db: Session = Depends(get_db)
-):
+) -> List[LessonOut]:
+    """Get schedule for a specific class"""
+    # Validate class exists
+    class_exists = db.query(ClassModel).filter(ClassModel.class_id == class_id).first()
+    if not class_exists:
+        raise HTTPException(404, f"Class with id {class_id} not found")
+    
+    rows = _get_schedule_rows(db, class_id=class_id, week=week, day=day, campus=campus)
+    
+    # If no rows, return an empty list (better UX for frontend)
+    if not rows:
+        return []
+    
+    lessons = _build_lessons_from_rows(rows)
+    unique_lessons = _deduplicate_lessons(lessons)
+    
+    return group_consecutive_lessons(unique_lessons) if grouped else unique_lessons
+
+def _get_schedule_rows(db: Session, teacher_id: Optional[int] = None, class_id: Optional[int] = None, 
+                      week: Optional[int] = None, day: Optional[str] = None, campus: Optional[str] = None):
+    """Common query logic for schedule endpoints"""
     query = (
         db.query(Lesson, ClassModel, Teacher)
         .join(ClassModel, Lesson.class_id == ClassModel.class_id)
         .join(Teacher, Lesson.teacher_id == Teacher.teacher_id)
-        .filter(Lesson.class_id == class_id)
     )
-
+    
+    if teacher_id is not None:
+        query = query.filter(Lesson.teacher_id == teacher_id)
+    if class_id is not None:
+        query = query.filter(Lesson.class_id == class_id)
     if week is not None:
         query = query.filter(Lesson.week == week)
     if day is not None:
         query = query.filter(Lesson.day == day)
     if campus is not None:
         query = query.filter(ClassModel.campus_name == campus)
-
-    rows = query.order_by(Lesson.week, Lesson.day, Lesson.start_time).all()
-
-    if not rows:
-        raise HTTPException(404, f"No lessons found for class_id={class_id}")
     
-    lessons = [
-        LessonOut(
-            week=lesson.week,
-            day=lesson.day,
-            start_time=lesson.start_time,
-            end_time=lesson.end_time,
-            class_code=(cls.code_new or cls.code_old),
-            teacher_name=teacher.name,
-            campus_name=cls.campus_name,
-            room=getattr(lesson, 'room', None),
-            duration_minutes=30  # Each slot is 30 minutes
-        )
-        for lesson, cls, teacher in rows
-    ]
+    return query.order_by(Lesson.week, Lesson.day, Lesson.start_time).all()
 
-    # Deduplicate before returning
-    seen, uniq = set(), []
-    for item in lessons:
-        key = (item.week, item.day, item.start_time, item.end_time, item.class_code, item.teacher_name, item.campus_name)
-        if key not in seen:
-            seen.add(key)
-            uniq.append(item)
-    
-    if grouped:
-        return group_consecutive_lessons(uniq)
-    
-    return uniq
-
-# Additional endpoints for debugging
+# Utility endpoints
 @app.get("/teachers")
 def list_teachers(db: Session = Depends(get_db)):
+    """List all teachers"""
     teachers = db.query(Teacher).all()
-    return [{"teacher_id": t.teacher_id, "name": t.name, "is_foreign": t.is_foreign} for t in teachers]
+    return [
+        {"teacher_id": t.teacher_id, "name": t.name, "is_foreign": t.is_foreign} 
+        for t in teachers
+    ]
 
 @app.get("/classes")
 def list_classes(db: Session = Depends(get_db)):
+    """List all classes"""
     classes = db.query(ClassModel).all()
-    return [{"class_id": c.class_id, "name": c.name, "code_new": c.code_new, "code_old": c.code_old} for c in classes]
+    return [
+        {"class_id": c.class_id, "name": c.name, "code_new": c.code_new, "code_old": c.code_old} 
+        for c in classes
+    ]
+
+@app.get("/health")
+def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 @app.post("/upload")
-async def upload_schedule(file: UploadFile = File(...), background_tasks: BackgroundTasks = BackgroundTasks()):
-    os.makedirs("data", exist_ok=True)
-    dest = os.path.join("data", "Schedule.xlsx")
+async def upload_schedule(
+    file: UploadFile = File(...), 
+    background_tasks: BackgroundTasks = BackgroundTasks()
+):
+    """Upload and process Excel schedule file"""
+    # Validate file
+    if not file.filename or not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(400, "File must be Excel format (.xlsx or .xls)")
+    
+    # Check file size
     content = await file.read()
-    with open(dest, "wb") as f:
-        f.write(content)
-
-    def run_import() -> None:
-        try:
-            subprocess.run(["python", "inspect_schedule.py"], check=False)
-        except Exception:
-            pass
-
-    background_tasks.add_task(run_import)
-    return {"status": "queued", "saved_to": dest}
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(413, f"File too large. Max size: {MAX_FILE_SIZE // 1024 // 1024}MB")
+    
+    try:
+        os.makedirs("data", exist_ok=True)
+        dest = os.path.join("data", "Schedule.xlsx")
+        
+        with open(dest, "wb") as f:
+            f.write(content)
+        
+        logger.info(f"Uploaded file saved: {dest}")
+        
+        def run_import() -> None:
+            try:
+                result = subprocess.run(
+                    ["python", "inspect_schedule.py"], 
+                    capture_output=True, text=True, timeout=300
+                )
+                if result.returncode == 0:
+                    logger.info("Import completed successfully")
+                else:
+                    logger.error(f"Import failed: {result.stderr}")
+            except subprocess.TimeoutExpired:
+                logger.error("Import timed out after 5 minutes")
+            except Exception as e:
+                logger.error(f"Import error: {e}")
+        
+        background_tasks.add_task(run_import)
+        return {"status": "queued", "saved_to": dest, "message": "Import started in background"}
+        
+    except Exception as e:
+        logger.error(f"Upload failed: {e}")
+        raise HTTPException(500, "Upload failed")
