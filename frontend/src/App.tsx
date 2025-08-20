@@ -1,17 +1,18 @@
 import React from 'react';
 import TeacherTimeline from './components/TeacherTimeline';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import WeekView from './views/WeekView';
 
 const App: React.FC = () => {
   return (
-    <div className="min-h-screen p-6">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold">E‑Home Schedule</h1>
-        <p className="text-sm text-gray-600">Frontend scaffold ready. Next step: build teacher timeline UI.</p>
-      </header>
-      <main className="space-y-4">
-        <TeacherTimeline />
-      </main>
-    </div>
+    <BrowserRouter>
+      <div className="min-h-screen bg-gray-50">
+        <Routes>
+          <Route path="/" element={<TeacherTimeline />} />
+          <Route path="/week" element={<WeekView />} />
+        </Routes>
+      </div>
+    </BrowserRouter>
   );
 };
 

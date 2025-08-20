@@ -14,8 +14,13 @@ import logging
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/schedule_test.db")
 CORS_ORIGINS = [
     "http://localhost:5173", "http://127.0.0.1:5173",
-    "http://localhost:5174", "http://127.0.0.1:5174", 
-    "http://localhost:5175", "http://127.0.0.1:5175"
+    "http://localhost:5174", "http://127.0.0.1:5174",
+    "http://localhost:5175", "http://127.0.0.1:5175",
+    "http://localhost:5176", "http://127.0.0.1:5176",
+    "http://localhost:5177", "http://127.0.0.1:5177",
+    "http://localhost:5178", "http://127.0.0.1:5178",
+    "http://localhost:5179", "http://127.0.0.1:5179",
+    "http://localhost:5180", "http://127.0.0.1:5180",
 ]
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
@@ -89,6 +94,7 @@ app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):517\d",
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
@@ -180,6 +186,13 @@ def _create_grouped_lesson(group: List[LessonOut]) -> LessonOut:
     start_time = datetime.strptime(first.start_time, '%H:%M')
     end_time = datetime.strptime(last.end_time, '%H:%M')
     duration = int((end_time - start_time).total_seconds() / 60)
+    # Merge co-teachers across the group and keep them unique/preserved order
+    merged_co: List[str] = []
+    for item in group:
+        if getattr(item, 'co_teachers', None):
+            for name in item.co_teachers:  # type: ignore[attr-defined]
+                if name not in merged_co:
+                    merged_co.append(name)
     
     return LessonOut(
         week=first.week,
@@ -190,6 +203,7 @@ def _create_grouped_lesson(group: List[LessonOut]) -> LessonOut:
         teacher_name=first.teacher_name,
         campus_name=first.campus_name,
         room=first.room,
+        co_teachers=merged_co or None,
         duration_minutes=duration
     )
 
@@ -200,13 +214,14 @@ def _build_lessons_from_rows(
 ) -> List[LessonOut]:
     """Convert DB rows to LessonOut objects, optionally attaching co-teachers"""
     items: List[LessonOut] = []
+    norm_exclude = exclude_teacher.strip().casefold() if exclude_teacher else None
     for lesson, cls, teacher in rows:
         key = (cls.class_id, lesson.week, lesson.day, lesson.start_time, lesson.end_time)
         co_list = None
         if co_map is not None and key in co_map:
             names = co_map[key]
-            if exclude_teacher is not None:
-                names = [n for n in names if n != exclude_teacher]
+            if norm_exclude is not None:
+                names = [n for n in names if n.strip().casefold() != norm_exclude]
             co_list = names or None
 
         items.append(
@@ -282,16 +297,53 @@ def get_teacher_schedule(
             .all()
         )
         co_map: Dict[Tuple[int, int, str, str, str], List[str]] = {}
+        # Only attach co-teachers that are complementary in foreign/local status.
+        # If the selected teacher is foreign, prefer Vietnamese (non-foreign) co-teachers, but if none exist,
+        # fall back to include same-type to avoid missing names due to data inconsistencies.
+        selected_is_foreign = bool(teacher_exists.is_foreign)
         for l, c, t in others:
             k = (c.class_id, l.week, l.day, l.start_time, l.end_time)
-            co_map.setdefault(k, []).append(t.name)
+            candidate_is_foreign = bool(getattr(t, 'is_foreign', False))
+            if selected_is_foreign:
+                if not candidate_is_foreign:
+                    co_map.setdefault(k, []).append(t.name)
+            else:
+                if candidate_is_foreign:
+                    co_map.setdefault(k, []).append(t.name)
+        # If any slot ended up with no co-teachers due to strict filtering,
+        # populate with all other names for that slot as a fallback.
+        if others:
+            by_key_all: Dict[Tuple[int, int, str, str, str], List[str]] = {}
+            for l, c, t in others:
+                k = (c.class_id, l.week, l.day, l.start_time, l.end_time)
+                by_key_all.setdefault(k, []).append(t.name)
+            for k, all_names in by_key_all.items():
+                if not co_map.get(k):
+                    co_map[k] = all_names
     else:
         co_map = {}
 
     lessons = _build_lessons_from_rows(rows, co_map=co_map, exclude_teacher=teacher_exists.name)
     unique_lessons = _deduplicate_lessons(lessons)
-    
-    return group_consecutive_lessons(unique_lessons) if grouped else unique_lessons
+    # Preserve co-teachers even when not grouped (if duplicates had different co lists)
+    if not grouped:
+        # Collapse duplicates but merge co-teachers
+        merged: Dict[tuple, LessonOut] = {}
+        for l in lessons:
+            key = (l.week, l.day, l.start_time, l.end_time, l.class_code, l.teacher_name, l.campus_name)
+            if key not in merged:
+                merged[key] = l
+            else:
+                base = merged[key]
+                base_co = list(base.co_teachers or [])
+                if l.co_teachers:
+                    for name in l.co_teachers:
+                        if name not in base_co:
+                            base_co.append(name)
+                base.co_teachers = base_co or None
+        return list(merged.values())
+
+    return group_consecutive_lessons(unique_lessons)
 
 @app.get("/class/{class_id}", response_model=List[LessonOut])
 def get_class_schedule(

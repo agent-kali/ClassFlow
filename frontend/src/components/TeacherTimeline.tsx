@@ -1,8 +1,11 @@
 import React from 'react';
 import { api } from '../api/client';
 import type { LessonOut, Teacher } from '../api/types';
+import LessonCard from './LessonCard';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 
 const dayOptions = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const dayOrder: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
 
 type Filters = {
   week?: number;
@@ -20,7 +23,14 @@ function Badge({ children, color = 'indigo', size = 'xs' }: { children: React.Re
     amber: 'bg-amber-50 text-amber-700 ring-amber-200',
   };
   const sizeCls = size === 'md' ? 'px-3 py-1 text-sm' : 'px-2 py-0.5 text-xs';
-  return <span className={`inline-flex items-center rounded-md font-medium ring-1 ring-inset ${sizeCls} ${map[color]}`}>{children}</span>;
+  return (
+    <span
+      tabIndex={0}
+      className={`inline-flex items-center rounded-md font-medium ring-1 ring-inset focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange-600 ${sizeCls} ${map[color]}`}
+    >
+      {children}
+    </span>
+  );
 }
 
 export const TeacherTimeline: React.FC = () => {
@@ -31,11 +41,22 @@ export const TeacherTimeline: React.FC = () => {
   });
   const [week, setWeek] = React.useState<number | undefined>(1);
   const [day, setDay] = React.useState<string>('Mon');
+  const [campus, setCampus] = React.useState<string | undefined>(undefined);
   const [grouped, setGrouped] = React.useState<boolean>(true);
   const [lessons, setLessons] = React.useState<LessonOut[] | null>(null);
   const [loading, setLoading] = React.useState<boolean>(false);
   const [error, setError] = React.useState<string | null>(null);
   const [weekly, setWeekly] = React.useState<LessonOut[] | null>(null);
+  const [scrolled, setScrolled] = React.useState<boolean>(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  React.useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 0);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   React.useEffect(() => {
     api
@@ -56,7 +77,7 @@ export const TeacherTimeline: React.FC = () => {
     setLoading(true);
     setError(null);
     setLessons(null);
-    const filters: Filters = { week, day, grouped };
+    const filters: Filters = { week, day, campus, grouped };
     try {
       const data = await api.getTeacherSchedule(selectedTeacherId, filters);
       setLessons(data);
@@ -73,17 +94,17 @@ export const TeacherTimeline: React.FC = () => {
       load();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTeacherId, week, day, grouped]);
+  }, [selectedTeacherId, week, day, campus, grouped]);
 
   // Fetch weekly overview (for day badges/state) whenever teacher/week changes
   React.useEffect(() => {
     if (selectedTeacherId === undefined) return;
     api
-      .getTeacherSchedule(selectedTeacherId, { week, grouped })
+      .getTeacherSchedule(selectedTeacherId, { week, campus, grouped })
       .then(setWeekly)
       .catch(() => setWeekly(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTeacherId, week, grouped]);
+  }, [selectedTeacherId, week, campus, grouped]);
 
   const campusColor = (campus?: string): 'indigo' | 'emerald' | 'sky' | 'rose' | 'amber' => {
     if (!campus) return 'indigo';
@@ -116,18 +137,25 @@ export const TeacherTimeline: React.FC = () => {
     return toMinutes(l.start_time) <= nowMin && nowMin < toMinutes(l.end_time);
   };
 
-  // Ensure unique + sorted
+  // Ensure unique + sorted (week -> day -> start_time)
   const displayLessons = React.useMemo(() => {
     if (!lessons) return [] as LessonOut[];
     const seen = new Set<string>();
     const out: LessonOut[] = [];
     for (const l of lessons) {
-      const key = [l.week, l.day, l.start_time, l.end_time, l.class_code, l.campus_name, l.room].join('|');
+      // Deduplicate by week|day|start|end|class|campus (ignore room differences)
+      const key = [l.week, l.day, l.start_time, l.end_time, l.class_code, l.campus_name].join('|');
       if (seen.has(key)) continue;
       seen.add(key);
       out.push(l);
     }
-    out.sort((a, b) => toMinutes(a.start_time) - toMinutes(b.start_time));
+    out.sort((a, b) => {
+      if (a.week !== b.week) return a.week - b.week;
+      const da = dayOrder[a.day] ?? 0;
+      const db = dayOrder[b.day] ?? 0;
+      if (da !== db) return da - db;
+      return toMinutes(a.start_time) - toMinutes(b.start_time);
+    });
     return out;
   }, [lessons]);
 
@@ -140,19 +168,78 @@ export const TeacherTimeline: React.FC = () => {
     return counts;
   }, [weekly]);
 
+  // Group lessons by day for sticky headers
+  const lessonsByDay = React.useMemo(() => {
+    const groups: Record<string, LessonOut[]> = {};
+    for (const l of displayLessons) {
+      (groups[l.day] ||= []).push(l);
+    }
+    Object.values(groups).forEach((arr) => arr.sort((a, b) => toMinutes(a.start_time) - toMinutes(b.start_time)));
+    return Object.entries(groups).sort((a, b) => (dayOrder[a[0]] ?? 0) - (dayOrder[b[0]] ?? 0));
+  }, [displayLessons]);
+
   return (
-    <div className="space-y-5">
-      {/* Toolbar */}
-      <div className="sticky top-0 z-10 rounded-xl border border-gray-200 bg-white/95 p-3 shadow-sm backdrop-blur">
-        <div className="flex flex-wrap items-center gap-3">
-          <div>
-            <label className="block text-xs text-gray-600">Teacher</label>
+    <div className="min-h-screen">
+      {/* Row 1: App bar */}
+      <div className={`elevated-on-scroll ${scrolled ? 'is-scrolled' : ''} sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur`} style={{ height: 'var(--app-bar-height)' }}>
+        <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <span className="text-lg font-semibold text-gray-900">E‑Home Schedule</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded-md bg-brand-orange-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-orange-700"
+              onClick={() => setDay(todayDay())}
+              title="Jump to today"
+            >
+              Today
+            </button>
+            <button
+              onClick={load}
+              className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              disabled={selectedTeacherId === undefined || loading}
+              aria-busy={loading}
+            >
+              {loading ? 'Loading…' : 'Reload'}
+            </button>
+            <button
+              className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              onClick={() => {
+                const params = new URLSearchParams();
+                if (selectedTeacherId) params.set('teacher', String(selectedTeacherId));
+                if (week) params.set('week', String(week));
+                navigate(`/week?${params.toString()}`);
+              }}
+            >
+              Week grid
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Row 2: Filter bar */}
+      <div className="sticky z-40 border-b border-gray-200 bg-white/95 backdrop-blur" style={{ top: 'var(--app-bar-height)', height: 'var(--filter-bar-height)' }}>
+        <div className="mx-auto flex h-full max-w-6xl items-center gap-4 overflow-x-auto px-4 sm:px-6">
+          {/* Teacher selector (pill with initials) */}
+          <div className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5">
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-700">
+              {(() => {
+                const name = teachers.find((t) => t.teacher_id === selectedTeacherId)?.name || '?';
+                const initials = name
+                  .split(' ')
+                  .map((p) => p[0])
+                  .slice(0, 2)
+                  .join('')
+                  .toUpperCase();
+                return initials;
+              })()}
+            </div>
             <select
-              className="mt-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+              className="bg-transparent text-sm text-gray-800 focus:outline-none"
               value={selectedTeacherId ?? ''}
               onChange={(e) => setSelectedTeacherId(e.target.value ? Number(e.target.value) : undefined)}
             >
-              <option value="">Select teacher…</option>
+              <option value="">Teacher…</option>
               {teachers.map((t) => (
                 <option key={t.teacher_id} value={t.teacher_id}>
                   {t.name}
@@ -160,117 +247,136 @@ export const TeacherTimeline: React.FC = () => {
               ))}
             </select>
           </div>
-          <div>
-            <label className="block text-xs text-gray-600">Week</label>
-            <div className="mt-1 flex items-center gap-2">
-              <button
-                className="rounded-md border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
-                onClick={() => setWeek((w) => (w && w > 1 ? w - 1 : 1))}
-              >
-                −
-              </button>
-              <input
-                type="number"
-                min={1}
-                className="w-20 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                value={week ?? ''}
-                placeholder="1"
-                onChange={(e) => setWeek(e.target.value ? Number(e.target.value) : undefined)}
-              />
-              <button
-                className="rounded-md border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
-                onClick={() => setWeek((w) => (w ? w + 1 : 1))}
-              >
-                +
-              </button>
+
+          {/* Week segmented 1–5 with arrows */}
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-gray-50"
+              onClick={() => setWeek((w) => (w && w > 1 ? w - 1 : 1))}
+              aria-label="Previous week"
+            >
+              ‹
+            </button>
+            <div className="isolate flex overflow-hidden rounded-md border border-gray-300">
+              {[1, 2, 3, 4, 5].map((w) => (
+                <button
+                  key={w}
+                  className={`w-10 px-0 py-1.5 text-sm font-medium ${week === w ? 'bg-brand-orange-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                  aria-pressed={week === w}
+                  onClick={() => setWeek(w)}
+                >
+                  {w}
+                </button>
+              ))}
             </div>
+            <button
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-gray-50"
+              onClick={() => setWeek((w) => (w ? Math.min(w + 1, 5) : 1))}
+              aria-label="Next week"
+            >
+              ›
+            </button>
           </div>
 
-          <div className="ml-auto flex items-center gap-2 overflow-x-auto rounded-md bg-gray-50 p-1 text-sm">
+          {/* Campus pills */}
+          <div className="flex items-center gap-2">
+            {[
+              { label: 'All', value: undefined },
+              { label: 'E1', value: 'E1' },
+              { label: 'E2', value: 'E2' },
+            ].map((c) => {
+              const active = campus === c.value || (c.value === undefined && campus === undefined);
+              return (
+                <button
+                  key={c.label}
+                  className={`rounded-full px-3 py-1.5 text-sm ${active ? 'bg-brand-orange-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                  onClick={() => setCampus(c.value)}
+                >
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Day segmented control */}
+          <div className="ml-auto flex items-center gap-0 overflow-x-auto rounded-md border border-gray-300">
             {dayOptions.map((d) => {
               const empty = (dayCounts[d] || 0) === 0;
               const active = day === d;
-              const base = 'whitespace-nowrap rounded-md px-3 py-1';
-              const style = active
-                ? 'bg-indigo-600 text-white'
-                : empty
-                ? 'text-gray-400'
-                : 'text-gray-700 hover:bg-white';
               return (
                 <button
                   key={d}
-                  className={`${base} ${style}`}
+                  className={`w-12 px-0 py-1.5 text-sm font-medium ${
+                    active ? 'bg-brand-orange-700 text-white' : empty ? 'bg-white text-gray-400' : 'bg-white text-gray-700 hover:bg-gray-50'
+                  }`}
                   title={empty ? 'No lessons (day off)' : ''}
+                  aria-pressed={active}
                   onClick={() => setDay(d)}
                 >
                   {d}
                 </button>
               );
             })}
-            <button
-              className="ml-1 whitespace-nowrap rounded-md border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-white"
-              onClick={() => setDay(todayDay())}
-              title="Jump to today"
-            >
-              Today
-            </button>
           </div>
-
-          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-            <input type="checkbox" className="h-4 w-4" checked={grouped} onChange={(e) => setGrouped(e.target.checked)} />
-            Group sessions
-          </label>
-          <button
-            onClick={load}
-            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
-            disabled={selectedTeacherId === undefined || loading}
-          >
-            {loading ? 'Loading…' : 'Reload'}
-          </button>
         </div>
       </div>
 
-      {error && <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {/* Content */}
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+        {error && (
+          <div className="mb-4 flex items-start justify-between rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <span>{error}</span>
+            <button className="rounded-md bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-500" onClick={load}>Retry</button>
+          </div>
+        )}
 
-      {/* List of sessions */}
-      {displayLessons && displayLessons.length > 0 ? (
-        <div className="space-y-3">
-          {displayLessons.map((l, idx) => (
-            <div
-              key={`${l.week}-${l.day}-${l.start_time}-${idx}`}
-              className={`flex items-center justify-between rounded-2xl border ${
-                isNowSlot(l) ? 'border-indigo-300 ring-2 ring-indigo-200' : 'border-gray-200'
-              } bg-white p-5 shadow-sm`}
-            >
-              <div className="flex items-center gap-3">
-                <div className={`h-8 w-1 rounded-full ${campusBar(l.campus_name)}`} />
-                <Badge color={campusColor(l.campus_name)} size="md">{l.campus_name}</Badge>
-                <Badge color="amber" size="md">{l.room || 'TBD'}</Badge>
-                <div className="text-lg font-semibold text-gray-900 tabular-nums">
-                  {l.start_time}–{l.end_time}
-                </div>
-                <div className="text-base text-gray-800">
-                  {l.class_code}
-                  {l.co_teachers && l.co_teachers.length ? (
-                    <span className="text-gray-600"> — {l.co_teachers.join(', ')}</span>
-                  ) : null}
-                </div>
+        {/* Loading skeletons */}
+        {loading && (!displayLessons || displayLessons.length === 0) && (
+          <div className="space-y-3">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="animate-pulse rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="mb-2 h-4 w-1/3 rounded bg-gray-200"></div>
+                <div className="h-4 w-1/2 rounded bg-gray-200"></div>
               </div>
-              <div className="flex items-center gap-2 text-xs text-gray-600">
-                {l.co_teachers && l.co_teachers.length > 0 && (
-                  <span title={`Co-teachers: ${l.co_teachers.join(', ')}`}>
-                    Co: {l.co_teachers.join(', ')}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-600">
-          {selectedTeacherId !== undefined ? 'No lessons found for current filters.' : 'Choose a teacher to load schedule.'}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!loading && selectedTeacherId !== undefined && displayLessons.length === 0 && (
+          <div className="rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-gray-600">No lessons</div>
+        )}
+
+        {/* Timeline grouped by day with sticky headers */}
+        {displayLessons.length > 0 && (
+          <div className="space-y-6">
+            {lessonsByDay.map(([dayLabel, items]) => (
+              <section key={dayLabel}>
+                <div
+                  className="sticky z-10 -mx-4 border-b border-gray-200 bg-gray-50/80 px-4 py-2 text-sm font-semibold text-gray-700 backdrop-blur sm:mx-0 sm:rounded-t-md"
+                  style={{ top: 'calc(var(--app-bar-height) + var(--filter-bar-height))' }}
+                >
+                  {dayLabel}
+                </div>
+                <div className="space-y-3 pt-2">
+                  {items.map((l, idx) => (
+                    <LessonCard
+                      key={`${l.week}-${l.day}-${l.start_time}-${idx}`}
+                      title={l.co_teachers && l.co_teachers.length ? `${l.co_teachers.join(' - ')} - ${l.class_code}` : l.class_code}
+                      start={l.start_time}
+                      end={l.end_time}
+                      room={l.room || 'TBD'}
+                      campus={l.campus_name}
+                      teachers={[l.teacher_name, ...(l.co_teachers || [])]}
+                      isNow={isNowSlot(l)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
