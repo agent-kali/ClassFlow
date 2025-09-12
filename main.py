@@ -12,6 +12,10 @@ import logging
 
 # Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/schedule_test.db")
+
+# Allow local dev ports and optionally extra origins via env (comma-separated)
+_extra_origins_env = os.getenv("CORS_EXTRA_ORIGINS", "").strip()
+_extra_origins = [o.strip() for o in _extra_origins_env.split(",") if o.strip()]
 CORS_ORIGINS = [
     "http://localhost:5173", "http://127.0.0.1:5173",
     "http://localhost:5174", "http://127.0.0.1:5174",
@@ -21,7 +25,7 @@ CORS_ORIGINS = [
     "http://localhost:5178", "http://127.0.0.1:5178",
     "http://localhost:5179", "http://127.0.0.1:5179",
     "http://localhost:5180", "http://127.0.0.1:5180",
-]
+] + _extra_origins
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 # Setup logging
@@ -94,7 +98,8 @@ app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_origin_regex=r"(http://(localhost|127\.0\.0\.1):517\d|https://.*\.loca\.lt)",
+    # Allow Render hosted frontends and tunnels
+    allow_origin_regex=r"(http://(localhost|127\.0\.0\.1):517\d|https://.*\.loca\.lt|https://.*\.onrender\.com)",
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],

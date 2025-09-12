@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: school-schedule-api
+    env: python
+    plan: free
+    region: oregon
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        value: "sqlite:///data/schedule_test.db"
+      - key: CORS_EXTRA_ORIGINS
+        value: ""
+
+  - type: static
+    name: school-schedule-frontend
+    env: static
+    plan: free
+    region: oregon
+    buildCommand: "cd frontend && npm ci && npm run build"
+    staticPublishPath: frontend/dist
+    autoDeploy: true
+    headers:
+      - path: "/*"
+        name: "Cache-Control"
+        value: "public, max-age=60"
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: school-schedule-api
+          property: url
+
