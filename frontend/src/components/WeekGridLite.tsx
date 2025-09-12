@@ -65,7 +65,7 @@ export default function WeekGridLite({ lessons, weekStart }: Props) {
     minStart = Math.floor(minStart / SLOT_MIN) * SLOT_MIN;
     maxEnd = Math.ceil(maxEnd / SLOT_MIN) * SLOT_MIN;
 
-    // Generate time slots using SLOT_MIN (exclude last boundary to match row count)
+    // Generate time slots using SLOT_MIN (include last boundary for labels)
     const slots: Array<{ minutes: number; label: string; isHour: boolean }> = [];
     for (let m = minStart; m <= maxEnd; m += SLOT_MIN) {
       const isHour = m % 60 === 0;
@@ -84,7 +84,9 @@ export default function WeekGridLite({ lessons, weekStart }: Props) {
       rowSpan: number;
       lane: number;
       laneWidth: string;
-      laneMargin: string;
+      laneLeft: string;
+      topStyle: string;
+      heightStyle: string;
     }> = [];
     
     DAYS.forEach((day, dayIndex) => {
@@ -121,9 +123,15 @@ export default function WeekGridLite({ lessons, weekStart }: Props) {
         // Calculate width and positioning based on active lanes
         const activeLanes = lanes.filter(endTime => endTime > startMin).length;
         const totalLanes = Math.max(1, activeLanes);
-        const laneWidthPercent = 100 / totalLanes;
-        const laneWidth = `calc(${laneWidthPercent}% - 2px)`;
-        const laneMargin = `${lane * laneWidthPercent}%`;
+        const gapPx = 8; // consistent horizontal gap
+        const totalGap = gapPx * (totalLanes - 1);
+        const laneWidth = `calc((100% - ${totalGap}px) / ${totalLanes})`;
+        const laneLeft = `calc(${lane} * ((100% - ${totalGap}px) / ${totalLanes} + ${gapPx}px))`;
+
+        // top/height in slot units to align with grid lines
+        const topSlots = rowStart - 1; // 0-based
+        const topStyle = `calc(${topSlots} * var(--slot-h))`;
+        const heightStyle = `calc(${rowSpan} * var(--slot-h))`;
         
         gridData.push({
           ...l,
@@ -133,15 +141,20 @@ export default function WeekGridLite({ lessons, weekStart }: Props) {
           rowSpan: rowSpan,
           lane,
           laneWidth,
-          laneMargin,
+          laneLeft,
+          topStyle,
+          heightStyle,
         });
       });
     });
 
+    // Row count should be number of 30-min rows between min..max
+    const rows = getRowCount(formatTime(minStart), formatTime(maxEnd), SLOT_MIN);
+
     return {
       gridLessons: gridData,
       timeSlots: slots,
-      gridRows: slots.length,
+      gridRows: rows,
       minStart,
       maxEnd,
     };
@@ -199,7 +212,7 @@ export default function WeekGridLite({ lessons, weekStart }: Props) {
         >
           {/* Time rail */}
           <div className="time-rail">
-            {timeSlots.map((slot, index) => (
+            {timeSlots.slice(0, gridRows).map((slot, index) => (
               <div
                 key={slot.minutes}
                 className={`time-slot ${slot.isHour ? 'hour' : 'half'}`}
@@ -224,12 +237,28 @@ export default function WeekGridLite({ lessons, weekStart }: Props) {
             return (
               <div
                 key={day}
-                className={`day-column ${isToday ? 'today' : ''}`}
+                className={`day-column ${isToday ? 'today' : ''} relative overflow-visible [isolation:isolate]`}
                 style={{ 
                   gridColumn: dayIndex + 2,
                   gridRow: '1 / -1'
                 }}
-              />
+              >
+                {/* foreground guides above cards */}
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 z-40 grid"
+                  style={{ gridTemplateRows: `repeat(${gridRows}, var(--slot-h))` }}
+                >
+                  {Array.from({ length: gridRows }).map((_, i) => (
+                    <div
+                      key={i}
+                      className={i % 2 === 0
+                        ? "border-b border-gray-300/90"
+                        : "border-b border-dashed border-gray-300/70"}
+                    />
+                  ))}
+                </div>
+              </div>
             );
           })}
 
@@ -245,71 +274,87 @@ export default function WeekGridLite({ lessons, weekStart }: Props) {
             return (
               <div
                 key={`${lesson.day}-${lesson.start_time}-${lesson.end_time}-${lesson.class_code}`}
-                className="min-h-0 overflow-hidden z-20"
+                className="z-[1]"
                 style={{
                   gridColumn: lesson.gridColumn,
                   gridRow: `${lesson.gridRowStart} / span ${lesson.rowSpan}`,
-                  marginLeft: lesson.laneMargin,
-                  width: lesson.laneWidth,
+                  position: 'relative',
                 }}
               >
+                <div
+                  className="absolute inset-y-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                  style={{
+                    left: lesson.laneLeft,
+                    width: lesson.laneWidth,
+                    top: 0,
+                    minHeight: '32px',
+                    height: lesson.heightStyle,
+                    zIndex: 1,
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget.style.zIndex = '60'); }}
+                  onMouseLeave={(e) => { (e.currentTarget.style.zIndex = '1'); }}
+                >
                 <LessonCard 
                   title={getClassName(lesson.class_code)}
                   start={lesson.start_time}
                   end={lesson.end_time}
                   room={lesson.room}
                   campus={lesson.campus_name}
-                  teachers={[lesson.teacher_name, ...(lesson.co_teachers || [])].filter(Boolean)}
+                  teachers={[
+                    { name: lesson.teacher_name, is_primary: true },
+                    ...(lesson.co_teachers || []).map((name: string) => ({ name, is_primary: false }))
+                  ]}
                   durationMin={lesson.duration_minutes}
                   isNow={isNow}
                 />
+                </div>
               </div>
             );
           })}
 
-          {/* Grid guides overlay - positioned only over slot area */}
+          {/* Visual grid layers under cards */}
           <div
             aria-hidden
             className="pointer-events-none absolute z-10"
             style={{
-              // Position over the slot grid area only (exclude time rail)
               left: 'var(--time-rail-width)',
               right: 0,
               top: 0,
               bottom: 0,
               display: 'grid',
               gridTemplateRows: `repeat(${gridRows}, var(--slot-h))`,
-              gridTemplateColumns: `repeat(7, 1fr)`, // 7 day columns
+              gridTemplateColumns: `repeat(7, 1fr)`,
             }}
           >
-            {/* Horizontal lines across all days */}
+            {/* Hourly zebra background (very subtle) */}
+            <div
+              className="col-span-7 row-span-full opacity-90"
+              style={{
+                gridColumn: '1 / -1',
+                gridRow: '1 / -1',
+                backgroundImage: `repeating-linear-gradient(to bottom, rgba(0,0,0,0.02) 0, rgba(0,0,0,0.02) var(--slot-h), transparent var(--slot-h), transparent calc(2*var(--slot-h)))`,
+                backgroundSize: '100% calc(2*var(--slot-h))',
+              }}
+            />
+
+            {/* Horizontal guides across all days */}
             {Array.from({ length: gridRows + 1 }).map((_, i) => {
-              const isHour = i % 2 === 0; // every 60 minutes (2 slots of 30min each)
+              const isHour = i % 2 === 0;
               return (
                 <div
                   key={`h-${i}`}
-                  className={`${
-                    isHour 
-                      ? 'border-t border-neutral-300/70' 
-                      : 'border-t border-dashed border-neutral-200/70'
-                  }`}
-                  style={{ 
-                    gridColumn: '1 / -1', // span all day columns
-                    gridRow: `${i + 1} / ${i + 1}`,
-                  }}
+                  className={isHour ? 'border-t border-neutral-300/80' : 'border-t border-dashed border-neutral-200/75'}
+                  style={{ gridColumn: '1 / -1', gridRow: `${i + 1} / ${i + 1}` }}
                 />
               );
             })}
 
             {/* Vertical day separators */}
-            {Array.from({ length: 8 }).map((_, i) => ( // 8 lines: before day1, between days, after day7
+            {Array.from({ length: 8 }).map((_, i) => (
               <div
                 key={`v-${i}`}
                 className="border-l border-neutral-200/60"
-                style={{ 
-                  gridRow: '1 / -1', // span all rows
-                  gridColumn: `${i + 1} / ${i + 1}`,
-                }}
+                style={{ gridRow: '1 / -1', gridColumn: `${i + 1} / ${i + 1}` }}
               />
             ))}
           </div>

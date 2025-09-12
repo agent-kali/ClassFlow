@@ -179,8 +179,8 @@ export function getGridPlacement(
   const endSlots   = Math.ceil((m(endHHMM)   - m(dayStartHHMM)) / slotMin);
 
   const rowStart = headerRows + 1 + startSlots; // +1 — потому что первая строка слота = 1
-  const rowEnd = headerRows + 1 + endSlots; // end должен включать конечный слот
-  const rowSpan = Math.max(1, endSlots - startSlots + 1); // inclusive of ending slot
+  const rowEnd = headerRows + 1 + endSlots; // end line (exclusive)
+  const rowSpan = Math.max(1, endSlots - startSlots); // number of 30-min tracks
 
   return { rowStart, rowSpan };
 }

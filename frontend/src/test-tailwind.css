@@ -1,0 +1,21 @@
+/* Test file to check if @tailwind directives work */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Test custom classes */
+.test-class {
+  @apply bg-blue-500 text-white p-4 rounded-lg;
+}
+
+.test-component {
+  @apply bg-green-500 text-white p-2 rounded;
+}
+
+.test-utility {
+  @apply bg-red-500 text-white px-3 py-2;
+}
+
+
+

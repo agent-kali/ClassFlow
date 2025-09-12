@@ -11,14 +11,30 @@
 
 :root {
   color-scheme: light dark;
+  
+  /* Design System Colors */
+  --app-bg: #F7F8FA;
+  --surface-bg: #FFFFFF;
+  --brand-orange: #E85A0C;
+  --campus-e1: #1790FF;
+  --campus-e2: #10B981;
+  --text-primary: #111827;
+  --text-secondary: #6B7280;
+  --hairline: rgba(0,0,0,0.06);
+  
+  /* Shadows */
+  --shadow-1: 0 1px 2px rgba(0,0,0,.04), 0 1px 1px rgba(0,0,0,.02);
+  --shadow-2: 0 2px 8px rgba(0,0,0,.06);
+  
   /* Sticky header heights */
   --app-bar-height: 56px; /* row 1 */
   --filter-bar-height: 56px; /* row 2 */
   --font-ui: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   --font-title: 'Be Vietnam Pro', var(--font-ui);
-  --brand: #f97316;
-  --campus-e1: #16a34a;
-  --campus-e2: #2563eb;
+  
+  /* Legacy brand (keeping for compatibility) */
+  --brand: var(--brand-orange);
+  
   /* Clean CSS Grid layout - responsive presets */
   --slot-h: 40px; /* grid guide alignment */
   --time-rail-width: 80px;
@@ -40,6 +56,11 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
+
+/* Global background */
+body {
+  background-color: var(--app-bg);
+}
 
 /* Week calendar custom styling */
 .week-calendar {
@@ -108,7 +129,7 @@
 
 /* Base focus ring for keyboard accessibility */
 :where(button, [role="button"], a, input, select):focus-visible {
-  outline: 2px solid theme('colors.brand.600');
+  outline: 2px solid #2563EB;
   outline-offset: 2px;
 }
 
@@ -260,6 +281,15 @@
   grid-template-columns: var(--time-rail-width) repeat(7, 1fr);
   min-width: 1200px;
   background: white;
+  position: relative; /* ensure absolute overlays are scoped to this grid */
+}
+
+/* Period view helpers */
+.period-card { position: relative; z-index: 1; }
+.period-card:focus-within, .period-card:hover { z-index: 60; }
+
+@media print {
+  .period-card { box-shadow: none !important; }
 }
 
 .time-rail {
@@ -271,14 +301,7 @@
 }
 
 .day-column {
-  background-image: 
-    repeating-linear-gradient(
-      to bottom,
-      transparent 0,
-      transparent calc(var(--slot-h) - 1px),
-      #f1f5f9 calc(var(--slot-h) - 1px),
-      #f1f5f9 var(--slot-h)
-    );
+  /* zebra handled by overlay now; keep minimal background */
   border-right: 1px solid #e5e7eb;
 }
 
@@ -314,6 +337,20 @@
   font-weight: 500;
   color: #6b7280;
 }
+
+/* Helpers */
+.week-zebra {
+  background-image:
+    linear-gradient(to bottom,
+      rgba(0,0,0,0.02) 0,
+      rgba(0,0,0,0.02) var(--slot-h),
+      transparent var(--slot-h),
+      transparent calc(2*var(--slot-h))
+    );
+  background-size: 100% calc(2*var(--slot-h));
+}
+
+.hr-dashed { border-top: 1px dashed rgba(17,24,39,0.28); }
 
 /* Custom scrollbar for calendar */
 .rbc-time-content::-webkit-scrollbar {

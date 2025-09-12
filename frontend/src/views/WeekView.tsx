@@ -2,14 +2,25 @@ import React from 'react';
 import { api } from '@/api/client';
 import type { LessonOut } from '@/api/types';
 import { getWeekStart } from '@/lib/time';
-import WeekGridLite from '@/components/WeekGridLite';
+import PeriodGrid from '@/components/PeriodGrid';
 import { useSearchParams, Link } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ChevronLeftIcon, ChevronRightIcon, CalendarIcon } from '@heroicons/react/24/outline';
+import { ChevronLeftIcon, ChevronRightIcon, CalendarIcon, Bars3Icon } from '@heroicons/react/24/outline';
+
+const DAYS: Array<"Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun"> = [
+  "Mon",
+  "Tue", 
+  "Wed",
+  "Thu",
+  "Fri",
+  "Sat",
+  "Sun",
+];
 
 export const WeekView: React.FC = () => {
   const [lessons, setLessons] = React.useState<LessonOut[]>([]);
   const [error, setError] = React.useState<string | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = React.useState<boolean>(false);
   const [params] = useSearchParams();
   const teacherId = Number(params.get('teacher') || '1');
   const week = Number(params.get('week') || '1');
@@ -20,6 +31,18 @@ export const WeekView: React.FC = () => {
       .then(setLessons)
       .catch((e) => setError(String(e)));
   }, [teacherId, week, grouped]);
+
+  // Close menu when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isMenuOpen && !(event.target as Element).closest('.relative')) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isMenuOpen]);
 
   const weekStart = React.useMemo(() => getWeekStart(week), [week]);
 
@@ -36,62 +59,85 @@ export const WeekView: React.FC = () => {
     window.location.search = newParams.toString();
   };
 
+  const viewMode: 'period' = 'period';
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Top Navigation Header */}
       <div className="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Left: Back to Day */}
+          {/* First Row: Navigation and Teacher Info */}
+          <div className="flex items-center justify-between h-12">
+            {/* Left: Burger Menu */}
             <div className="flex items-center space-x-4">
-              <Link 
-                to="/" 
-                className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-orange-500 focus:ring-offset-2"
-              >
-                <CalendarIcon className="w-4 h-4 mr-2" />
-                Day View
-              </Link>
-            </div>
-
-            {/* Center: Week Navigation */}
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => navigateWeek('prev')}
-                disabled={week <= 1}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <ChevronLeftIcon className="w-5 h-5" />
-              </button>
-              
-              <div className="text-center">
-                <h1 className="text-lg font-semibold text-gray-900">
-                  {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
-                </h1>
-                <p className="text-sm text-gray-500">Week {week}</p>
+              <div className="relative">
+                <button
+                  onClick={() => setIsMenuOpen(!isMenuOpen)}
+                  className="inline-flex items-center p-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 transition-colors"
+                >
+                  <Bars3Icon className="w-5 h-5" />
+                </button>
+                
+                {/* Dropdown Menu */}
+                {isMenuOpen && (
+                  <div className="absolute left-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                    <div className="py-1">
+                      <Link
+                        to="/"
+                        className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        <CalendarIcon className="w-4 h-4 mr-3" />
+                        Day View
+                      </Link>
+                    </div>
+                  </div>
+                )}
               </div>
-              
-              <button
-                onClick={() => navigateWeek('next')}
-                disabled={week >= 52}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <ChevronRightIcon className="w-5 h-5" />
-              </button>
             </div>
 
             {/* Right: Teacher Info */}
             <div className="flex items-center space-x-3">
               <div className="text-right">
-                <p className="text-sm font-medium text-gray-900">Teacher #{teacherId}</p>
-                <p className="text-xs text-gray-500">Weekly Schedule</p>
+                <p className="text-sm font-semibold text-gray-900">Teacher #{teacherId}</p>
+                <p className="text-xs text-gray-500 font-medium">Weekly Schedule</p>
               </div>
-              <div className="w-8 h-8 bg-brand-orange-100 rounded-full flex items-center justify-center">
-                <span className="text-sm font-medium text-brand-orange-700">T{teacherId}</span>
+              <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                <span className="text-sm font-semibold text-orange-700">T{teacherId}</span>
               </div>
+            </div>
+          </div>
+
+          {/* Second Row: Week Navigation */}
+          <div className="flex items-center justify-center h-12 border-t border-gray-100">
+            <div className="flex items-center space-x-6">
+              <button
+                onClick={() => navigateWeek('prev')}
+                disabled={week <= 1}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeftIcon className="w-5 h-5" />
+              </button>
+              
+              <div className="text-center min-w-0 flex-1">
+                <h1 className="text-lg font-semibold text-gray-900 truncate">
+                  {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
+                </h1>
+                <p className="text-sm text-gray-500 font-medium">Week {week}</p>
+              </div>
+              
+              <button
+                onClick={() => navigateWeek('next')}
+                disabled={week >= 52}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRightIcon className="w-5 h-5" />
+              </button>
             </div>
           </div>
         </div>
       </div>
+
 
       {/* Error State */}
       {error && (
@@ -109,9 +155,11 @@ export const WeekView: React.FC = () => {
 
       {/* Calendar Container */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
-        <WeekGridLite
+        <PeriodGrid
+          weekStartISO={weekStart.toISOString()}
           lessons={lessons}
-          weekStart={weekStart}
+          dayStart="17:00"
+          dayEnd="21:00"
         />
       </div>
     </div>

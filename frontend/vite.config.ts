@@ -12,6 +12,13 @@ export default defineConfig({
   server: {
     port: 5173,
     open: true,
+    host: true, // Allow external connections
+    allowedHosts: [
+      'localhost',
+      '127.0.0.1',
+      '.loca.lt', // Allow all localtunnel subdomains
+      'e-home-frontend.loca.lt', // Specific subdomain
+    ],
   },
 });
 

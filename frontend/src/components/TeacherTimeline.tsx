@@ -8,9 +8,9 @@ const dayOptions = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const dayOrder: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
 
 type Filters = {
-  week?: number;
   day?: string;
   campus?: string;
+  week?: number;
   grouped?: boolean;
 };
 
@@ -39,7 +39,7 @@ export const TeacherTimeline: React.FC = () => {
     const saved = localStorage.getItem('selectedTeacherId');
     return saved ? Number(saved) : undefined;
   });
-  const [week, setWeek] = React.useState<number | undefined>(1);
+  const [week, setWeek] = React.useState<number>(1);
   const [day, setDay] = React.useState<string>('Mon');
   const [campus, setCampus] = React.useState<string | undefined>(undefined);
   const [grouped, setGrouped] = React.useState<boolean>(true);
@@ -77,7 +77,7 @@ export const TeacherTimeline: React.FC = () => {
     setLoading(true);
     setError(null);
     setLessons(null);
-    const filters: Filters = { week, day, campus, grouped };
+    const filters: Filters = { day, campus, week, grouped };
     try {
       const data = await api.getTeacherSchedule(selectedTeacherId, filters);
       setLessons(data);
@@ -94,17 +94,17 @@ export const TeacherTimeline: React.FC = () => {
       load();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTeacherId, week, day, campus, grouped]);
+  }, [selectedTeacherId, day, campus, week, grouped]);
 
-  // Fetch weekly overview (for day badges/state) whenever teacher/week changes
+  // Fetch weekly overview (for day badges/state) whenever teacher/campus/week changes
   React.useEffect(() => {
     if (selectedTeacherId === undefined) return;
     api
-      .getTeacherSchedule(selectedTeacherId, { week, campus, grouped })
+      .getTeacherSchedule(selectedTeacherId, { campus, week, grouped })
       .then(setWeekly)
       .catch(() => setWeekly(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTeacherId, week, campus, grouped]);
+  }, [selectedTeacherId, campus, week, grouped]);
 
   const campusColor = (campus?: string): 'indigo' | 'emerald' | 'sky' | 'rose' | 'amber' => {
     if (!campus) return 'indigo';
@@ -130,6 +130,28 @@ export const TeacherTimeline: React.FC = () => {
     return dayOptions[(idx + 6) % 7]; // shift so Mon=0
   };
 
+  // Calculate week start and end dates based on academic calendar
+  const getWeekDates = (weekNumber: number) => {
+    // Academic year starts on August 4, 2024 (Week 1)
+    const academicYearStart = new Date(2024, 7, 4); // Month is 0-indexed, so 7 = August
+    
+    // Calculate the start date for the requested week
+    const startOfWeek = new Date(academicYearStart);
+    startOfWeek.setDate(academicYearStart.getDate() + (weekNumber - 1) * 7);
+    
+    // Calculate the end date (6 days after start)
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    
+    const formatDate = (date: Date) => {
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      return `${day}/${month}`;
+    };
+    
+    return `${formatDate(startOfWeek)} - ${formatDate(endOfWeek)}`;
+  };
+
   const isNowSlot = (l: LessonOut) => {
     if (day !== todayDay()) return false;
     const now = new Date();
@@ -137,25 +159,33 @@ export const TeacherTimeline: React.FC = () => {
     return toMinutes(l.start_time) <= nowMin && nowMin < toMinutes(l.end_time);
   };
 
-  // Ensure unique + sorted (week -> day -> start_time)
+  // Ensure unique + sorted - aggressive deduplication by time slot
   const displayLessons = React.useMemo(() => {
     if (!lessons) return [] as LessonOut[];
-    const seen = new Set<string>();
-    const out: LessonOut[] = [];
+    
+    // First pass: group by day + time slot (same teacher can't be in two places at once)
+    const timeSlotMap = new Map<string, LessonOut>();
+    
     for (const l of lessons) {
-      // Deduplicate by week|day|start|end|class|campus (ignore room differences)
-      const key = [l.week, l.day, l.start_time, l.end_time, l.class_code, l.campus_name].join('|');
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(l);
+      // Key by day + time slot only - if there are conflicts, keep the first one
+      const timeSlotKey = `${l.day}|${l.start_time}|${l.end_time}`;
+      
+      if (!timeSlotMap.has(timeSlotKey)) {
+        timeSlotMap.set(timeSlotKey, l);
+      }
+      // If there's already a lesson at this time slot, ignore the duplicate
+      // This ensures no teacher can have overlapping lessons
     }
+    
+    // Convert back to array and sort
+    const out = Array.from(timeSlotMap.values());
     out.sort((a, b) => {
-      if (a.week !== b.week) return a.week - b.week;
       const da = dayOrder[a.day] ?? 0;
       const db = dayOrder[b.day] ?? 0;
       if (da !== db) return da - db;
       return toMinutes(a.start_time) - toMinutes(b.start_time);
     });
+    
     return out;
   }, [lessons]);
 
@@ -179,150 +209,319 @@ export const TeacherTimeline: React.FC = () => {
   }, [displayLessons]);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-app-bg">
       {/* Row 1: App bar */}
-      <div className={`elevated-on-scroll ${scrolled ? 'is-scrolled' : ''} sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur`} style={{ height: 'var(--app-bar-height)' }}>
-        <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-6">
+      <div className={`elevated-on-scroll ${scrolled ? 'is-scrolled' : ''} sticky top-0 z-50 border-b border-hairline bg-surface-bg shadow-1`} style={{ height: 'var(--app-bar-height)' }}>
+        <div className="mx-auto flex h-full max-w-6xl items-center px-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <span className="text-lg font-semibold text-gray-900">E‑Home Schedule</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              className="rounded-md bg-brand-orange-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-orange-700"
-              onClick={() => setDay(todayDay())}
-              title="Jump to today"
-            >
-              Today
-            </button>
-            <button
-              onClick={load}
-              className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              disabled={selectedTeacherId === undefined || loading}
-              aria-busy={loading}
-            >
-              {loading ? 'Loading…' : 'Reload'}
-            </button>
-            <button
-              className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              onClick={() => {
-                const params = new URLSearchParams();
-                if (selectedTeacherId) params.set('teacher', String(selectedTeacherId));
-                if (week) params.set('week', String(week));
-                navigate(`/week?${params.toString()}`);
-              }}
-            >
-              Week grid
-            </button>
+            <span className="text-lg font-semibold text-text-primary">E‑Home Schedule</span>
           </div>
         </div>
       </div>
 
       {/* Row 2: Filter bar */}
-      <div className="sticky z-40 border-b border-gray-200 bg-white/95 backdrop-blur" style={{ top: 'var(--app-bar-height)', height: 'var(--filter-bar-height)' }}>
-        <div className="mx-auto flex h-full max-w-6xl items-center gap-4 overflow-x-auto px-4 sm:px-6">
-          {/* Teacher selector (pill with initials) */}
-          <div className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5">
-            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-700">
-              {(() => {
-                const name = teachers.find((t) => t.teacher_id === selectedTeacherId)?.name || '?';
-                const initials = name
-                  .split(' ')
-                  .map((p) => p[0])
-                  .slice(0, 2)
-                  .join('')
-                  .toUpperCase();
-                return initials;
-              })()}
-            </div>
-            <select
-              className="bg-transparent text-sm text-gray-800 focus:outline-none"
-              value={selectedTeacherId ?? ''}
-              onChange={(e) => setSelectedTeacherId(e.target.value ? Number(e.target.value) : undefined)}
-            >
-              <option value="">Teacher…</option>
-              {teachers.map((t) => (
-                <option key={t.teacher_id} value={t.teacher_id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </div>
+      <div className="sticky z-40 border-b border-hairline bg-surface-bg shadow-1" style={{ top: 'var(--app-bar-height)' }}>
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-3">
+          {/* Desktop layout: 3-row structure */}
+          <div className="hidden sm:flex sm:flex-col gap-3 w-full">
+            {/* Row 1: Left (Teacher + Campus) | Right (Actions) */}
+            <div className="flex items-center justify-between">
+              {/* Left section: Teacher selector + Campus filters */}
+              <div className="flex items-center gap-4">
+                {/* Teacher selector (pill with initials) */}
+                <div className="flex items-center gap-2 rounded-full border border-hairline bg-surface-bg px-3 py-1.5 min-w-0 flex-shrink-0 shadow-1">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-text-secondary">
+                    {(() => {
+                      const name = teachers.find((t) => t.teacher_id === selectedTeacherId)?.name || '?';
+                      const initials = name
+                        .split(' ')
+                        .map((p) => p[0])
+                        .slice(0, 2)
+                        .join('')
+                        .toUpperCase();
+                      return initials;
+                    })()}
+                  </div>
+                  <select
+                    className="bg-transparent text-sm text-text-primary focus:outline-none min-w-0"
+                    value={selectedTeacherId ?? ''}
+                    onChange={(e) => setSelectedTeacherId(e.target.value ? Number(e.target.value) : undefined)}
+                  >
+                    <option value="">Teacher…</option>
+                    {teachers.map((t) => (
+                      <option key={t.teacher_id} value={t.teacher_id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-          {/* Week segmented 1–5 with arrows */}
-          <div className="flex items-center gap-2">
-            <button
-              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-gray-50"
-              onClick={() => setWeek((w) => (w && w > 1 ? w - 1 : 1))}
-              aria-label="Previous week"
-            >
-              ‹
-            </button>
-            <div className="isolate flex overflow-hidden rounded-md border border-gray-300">
-              {[1, 2, 3, 4, 5].map((w) => (
-                <button
-                  key={w}
-                  className={`w-10 px-0 py-1.5 text-sm font-medium ${week === w ? 'bg-brand-orange-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-                  aria-pressed={week === w}
-                  onClick={() => setWeek(w)}
-                >
-                  {w}
-                </button>
-              ))}
-            </div>
-            <button
-              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-gray-50"
-              onClick={() => setWeek((w) => (w ? Math.min(w + 1, 5) : 1))}
-              aria-label="Next week"
-            >
-              ›
-            </button>
-          </div>
+                {/* Campus chips - outline only with campus colors */}
+                <div className="flex items-center gap-2">
+                  {[
+                    { label: 'All', value: undefined },
+                    { label: 'E1', value: 'E1' },
+                    { label: 'E2', value: 'E2' },
+                  ].map((c) => {
+                    const active = campus === c.value || (c.value === undefined && campus === undefined);
+                    const borderCls = c.value === 'E1' ? 'border-campus-e1' : c.value === 'E2' ? 'border-campus-e2' : 'border-gray-300';
+                    const textCls = c.value === 'E1' ? 'text-campus-e1' : c.value === 'E2' ? 'text-campus-e2' : 'text-text-secondary';
+                    return (
+                      <button
+                        key={c.label}
+                        className={`rounded-full px-3 py-1.5 text-sm bg-surface-bg border ${borderCls} ${textCls} ${active ? 'ring-2 ring-offset-1 ring-current' : 'hover:bg-gray-50'} shadow-1`}
+                        onClick={() => setCampus(c.value)}
+                      >
+                        {c.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-          {/* Campus pills */}
-          <div className="flex items-center gap-2">
-            {[
-              { label: 'All', value: undefined },
-              { label: 'E1', value: 'E1' },
-              { label: 'E2', value: 'E2' },
-            ].map((c) => {
-              const active = campus === c.value || (c.value === undefined && campus === undefined);
-              return (
+              {/* Right section: Actions */}
+              <div className="flex items-center gap-2">
                 <button
-                  key={c.label}
-                  className={`rounded-full px-3 py-1.5 text-sm ${active ? 'bg-brand-orange-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                  onClick={() => setCampus(c.value)}
-                >
-                  {c.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Day segmented control */}
-          <div className="ml-auto flex items-center gap-0 overflow-x-auto rounded-md border border-gray-300">
-            {dayOptions.map((d) => {
-              const empty = (dayCounts[d] || 0) === 0;
-              const active = day === d;
-              return (
-                <button
-                  key={d}
-                  className={`w-12 px-0 py-1.5 text-sm font-medium ${
-                    active ? 'bg-brand-orange-700 text-white' : empty ? 'bg-white text-gray-400' : 'bg-white text-gray-700 hover:bg-gray-50'
+                  className={`rounded-[14px] px-3 py-2 text-sm font-medium shadow-1 transition-colors ${
+                    day === todayDay() 
+                      ? 'bg-brand-orange text-white hover:bg-brand-orange-700 active:bg-brand-orange-800' 
+                      : 'border border-hairline bg-surface-bg text-text-secondary hover:bg-gray-50'
                   }`}
-                  title={empty ? 'No lessons (day off)' : ''}
-                  aria-pressed={active}
-                  onClick={() => setDay(d)}
+                  onClick={() => setDay(todayDay())}
+                  title="Jump to today"
                 >
-                  {d}
+                  Today
                 </button>
-              );
-            })}
+                <button
+                  onClick={load}
+                  className="rounded-[14px] border border-hairline bg-surface-bg px-3 py-2 text-sm font-medium text-text-secondary hover:bg-gray-50 shadow-1"
+                  disabled={selectedTeacherId === undefined || loading}
+                  aria-busy={loading}
+                >
+                  {loading ? 'Loading…' : 'Reload'}
+                </button>
+                <button
+                  className="rounded-[14px] border border-hairline bg-surface-bg px-3 py-2 text-sm font-medium text-text-secondary hover:bg-gray-50 shadow-1"
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    if (selectedTeacherId) params.set('teacher', String(selectedTeacherId));
+                    navigate(`/week?${params.toString()}`);
+                  }}
+                >
+                  Week grid
+                </button>
+              </div>
+            </div>
+
+            {/* Row 2: Week selector - centered */}
+            <div className="flex items-center justify-center">
+              <div className="flex items-center gap-3">
+                <button
+                  className="rounded-[14px] border border-hairline bg-surface-bg px-4 py-2 text-sm text-text-secondary hover:bg-gray-50 shadow-1"
+                  onClick={() => setWeek(Math.max(1, week - 1))}
+                  title="Previous week"
+                >
+                  ←
+                </button>
+                <div className="flex items-center gap-2 px-4 py-2 bg-surface-bg rounded-[14px] border border-hairline shadow-1">
+                  <span className="text-sm font-medium text-text-primary">
+                    Week {week}
+                  </span>
+                  <span className="text-sm text-text-secondary">
+                    |
+                  </span>
+                  <span className="text-sm font-medium text-text-primary">
+                    {getWeekDates(week)}
+                  </span>
+                </div>
+                <button
+                  className="rounded-[14px] border border-hairline bg-surface-bg px-4 py-2 text-sm text-text-secondary hover:bg-gray-50 shadow-1"
+                  onClick={() => setWeek(week + 1)}
+                  title="Next week"
+                >
+                  →
+                </button>
+              </div>
+            </div>
+
+            {/* Row 3: Day tabs - centered */}
+            <div className="flex items-center justify-center">
+              <div 
+                role="tablist" 
+                aria-label="Days of the week"
+                className="flex items-center gap-0 overflow-x-auto rounded-[14px] border border-hairline flex-shrink-0 bg-surface-bg shadow-1"
+              >
+                {dayOptions.map((d) => {
+                  const empty = (dayCounts[d] || 0) === 0;
+                  const active = day === d;
+                  return (
+                    <button
+                      key={d}
+                      role="tab"
+                      aria-selected={active}
+                      aria-controls={`day-panel-${d}`}
+                      className={`w-16 px-0 py-2 text-base font-medium border-r border-hairline last:border-r-0 transition-colors ${
+                        active 
+                          ? 'bg-brand-orange text-white hover:bg-brand-orange-700 active:bg-brand-orange-800' 
+                          : empty 
+                            ? 'bg-surface-bg text-gray-400' 
+                            : 'bg-surface-bg text-text-primary hover:bg-gray-50'
+                      }`}
+                      title={empty ? 'No lessons (day off)' : `View ${d} schedule`}
+                      onClick={() => setDay(d)}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Mobile layout: Simplified 2-row stacked */}
+          <div className="flex flex-col sm:hidden gap-3 w-full">
+            {/* Row 1: Teacher selector + Campus filters */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Teacher selector */}
+              <div className="flex items-center gap-2 rounded-full border border-hairline bg-surface-bg px-3 py-1.5 min-w-0 flex-shrink-0 shadow-1">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-text-secondary">
+                  {(() => {
+                    const name = teachers.find((t) => t.teacher_id === selectedTeacherId)?.name || '?';
+                    const initials = name
+                      .split(' ')
+                      .map((p) => p[0])
+                      .slice(0, 2)
+                      .join('')
+                      .toUpperCase();
+                    return initials;
+                  })()}
+                </div>
+                <select
+                  className="bg-transparent text-sm text-text-primary focus:outline-none min-w-0"
+                  value={selectedTeacherId ?? ''}
+                  onChange={(e) => setSelectedTeacherId(e.target.value ? Number(e.target.value) : undefined)}
+                >
+                  <option value="">Teacher…</option>
+                  {teachers.map((t) => (
+                    <option key={t.teacher_id} value={t.teacher_id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Campus chips - outline only with campus colors */}
+              <div className="flex items-center gap-1">
+                {[
+                  { label: 'All', value: undefined },
+                  { label: 'E1', value: 'E1' },
+                  { label: 'E2', value: 'E2' },
+                ].map((c) => {
+                  const active = campus === c.value || (c.value === undefined && campus === undefined);
+                  const borderCls = c.value === 'E1' ? 'border-campus-e1' : c.value === 'E2' ? 'border-campus-e2' : 'border-gray-300';
+                  const textCls = c.value === 'E1' ? 'text-campus-e1' : c.value === 'E2' ? 'text-campus-e2' : 'text-text-secondary';
+                  return (
+                    <button
+                      key={c.label}
+                      className={`rounded-full px-2 py-1 text-xs bg-surface-bg border ${borderCls} ${textCls} ${active ? 'ring-1 ring-current' : 'hover:bg-gray-50'} shadow-1`}
+                      onClick={() => setCampus(c.value)}
+                    >
+                      {c.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Row 2: Week selector - moved to left */}
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-[12px] border border-hairline bg-surface-bg px-3 py-1.5 text-sm text-text-secondary hover:bg-gray-50 shadow-1"
+                onClick={() => setWeek(Math.max(1, week - 1))}
+                title="Previous week"
+              >
+                ←
+              </button>
+              <span className="px-3 py-1.5 text-sm font-medium text-text-primary bg-surface-bg rounded-[12px] border border-hairline shadow-1">
+                Week {week} ({getWeekDates(week)})
+              </span>
+              <button
+                className="rounded-[12px] border border-hairline bg-surface-bg px-3 py-1.5 text-sm text-text-secondary hover:bg-gray-50 shadow-1"
+                onClick={() => setWeek(week + 1)}
+                title="Next week"
+              >
+                →
+              </button>
+            </div>
+
+            {/* Row 3: Day buttons + Action buttons */}
+            <div className="flex items-center justify-between gap-2">
+              {/* Day segmented control with horizontal scroll */}
+              <div 
+                role="tablist" 
+                aria-label="Days of the week"
+                className="flex items-center gap-0 overflow-x-auto rounded-[12px] border border-hairline flex-shrink-0 bg-surface-bg shadow-1"
+              >
+                {dayOptions.map((d) => {
+                  const empty = (dayCounts[d] || 0) === 0;
+                  const active = day === d;
+                  return (
+                    <button
+                      key={d}
+                      role="tab"
+                      aria-selected={active}
+                      aria-controls={`day-panel-${d}`}
+                      className={`w-10 px-0 py-1.5 text-sm font-medium border-r border-hairline last:border-r-0 transition-colors ${
+                        active 
+                          ? 'bg-brand-orange text-white hover:bg-brand-orange-700 active:bg-brand-orange-800' 
+                          : empty 
+                            ? 'bg-surface-bg text-gray-400' 
+                            : 'bg-surface-bg text-text-primary hover:bg-gray-50'
+                      }`}
+                      title={empty ? 'No lessons (day off)' : `View ${d} schedule`}
+                      onClick={() => setDay(d)}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-1">
+                {/* Today button */}
+                <button
+                  className={`rounded-[12px] px-2 py-1.5 text-xs font-medium shadow-1 transition-colors ${
+                    day === todayDay() 
+                      ? 'bg-brand-orange text-white hover:bg-brand-orange-700 active:bg-brand-orange-800' 
+                      : 'border border-hairline bg-surface-bg text-text-secondary hover:bg-gray-50'
+                  }`}
+                  onClick={() => setDay(todayDay())}
+                  title="Jump to today"
+                >
+                  Today
+                </button>
+
+                {/* Week grid button */}
+                <button
+                  className="rounded-[12px] border border-hairline bg-surface-bg px-2 py-1.5 text-xs font-medium text-text-secondary hover:bg-gray-50 shadow-1"
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    if (selectedTeacherId) params.set('teacher', String(selectedTeacherId));
+                    navigate(`/week?${params.toString()}`);
+                  }}
+                  title="Week grid view"
+                >
+                  Week
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Content */}
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6" id={`day-panel-${day}`} role="tabpanel" aria-labelledby={`day-tab-${day}`}>
         {error && (
           <div className="mb-4 flex items-start justify-between rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             <span>{error}</span>
@@ -361,13 +560,16 @@ export const TeacherTimeline: React.FC = () => {
                 <div className="space-y-3 pt-2">
                   {items.map((l, idx) => (
                     <LessonCard
-                      key={`${l.week}-${l.day}-${l.start_time}-${idx}`}
-                      title={l.co_teachers && l.co_teachers.length ? `${l.co_teachers.join(' - ')} - ${l.class_code}` : l.class_code}
+                      key={`${l.day}-${l.start_time}-${l.end_time}-${l.class_code}-${l.campus_name}-${l.teacher_name}-${idx}`}
+                      title={l.class_code}
                       start={l.start_time}
                       end={l.end_time}
                       room={l.room || 'TBD'}
                       campus={l.campus_name}
-                      teachers={[l.teacher_name, ...(l.co_teachers || [])]}
+                      teachers={[
+                        { name: l.teacher_name, is_primary: true },
+                        ...(l.co_teachers || []).map((name: string) => ({ name, is_primary: false }))
+                      ]}
                       isNow={isNowSlot(l)}
                     />
                   ))}
