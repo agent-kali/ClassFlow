@@ -21,6 +21,8 @@ export const WeekView: React.FC = () => {
   const [lessons, setLessons] = React.useState<LessonOut[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = React.useState<boolean>(false);
+  const [isHeaderVisible, setIsHeaderVisible] = React.useState<boolean>(true);
+  const [lastScrollY, setLastScrollY] = React.useState<number>(0);
   const [params] = useSearchParams();
   const teacherId = Number(params.get('teacher') || '1');
   const week = Number(params.get('week') || '1');
@@ -44,6 +46,28 @@ export const WeekView: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isMenuOpen]);
 
+  // Handle scroll-based header visibility
+  React.useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      
+      // Show header only when reaching the top (within 20px of top)
+      if (currentScrollY < 20) {
+        setIsHeaderVisible(true);
+      } 
+      // Hide header when scrolling down past 30px (much earlier to avoid covering Monday)
+      else if (currentScrollY > lastScrollY && currentScrollY > 30) {
+        setIsHeaderVisible(false);
+      }
+      // Don't show header when scrolling up - only when reaching top
+      
+      setLastScrollY(currentScrollY);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [lastScrollY]);
+
   const weekStart = React.useMemo(() => getWeekStart(week), [week]);
 
   const weekEnd = React.useMemo(() => {
@@ -64,7 +88,11 @@ export const WeekView: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Top Navigation Header */}
-      <div className="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm">
+      <div className={`sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm transition-all duration-500 ease-out ${
+        isHeaderVisible 
+          ? 'translate-y-0 opacity-100' 
+          : '-translate-y-full opacity-0'
+      }`}>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           {/* First Row: Navigation and Teacher Info */}
           <div className="flex items-center justify-between h-12">
