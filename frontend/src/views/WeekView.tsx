@@ -1,7 +1,7 @@
 import React from 'react';
 import { api } from '@/api/client';
 import type { LessonOut } from '@/api/types';
-import { getWeekStart } from '@/lib/time';
+import { getWeekStart, setAcademicAnchor } from '@/lib/time';
 import PeriodGrid from '@/components/PeriodGrid';
 import { useSearchParams, Link } from 'react-router-dom';
 import { format } from 'date-fns';
@@ -27,6 +27,13 @@ export const WeekView: React.FC = () => {
   const teacherId = Number(params.get('teacher') || '1');
   const week = Number(params.get('week') || '1');
   const grouped = true;
+
+  // Fetch calendar anchor once
+  React.useEffect(() => {
+    api.getAnchor()
+      .then(({ anchor_date }) => setAcademicAnchor(anchor_date))
+      .catch(() => {});
+  }, []);
 
   React.useEffect(() => {
     api.getTeacherSchedule(teacherId, { week, grouped })

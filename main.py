@@ -1,17 +1,25 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, text
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
-from pydantic import BaseModel
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, text, DateTime, Enum, or_
+from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
+from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict, Tuple
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 import os
 import subprocess
 import logging
+import hashlib
+import secrets
+import jwt
+from enum import Enum as PyEnum
 
 # Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/schedule_test.db")
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
+JWT_ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60  # 24 hours
 
 # Allow local dev ports and optionally extra origins via env (comma-separated)
 _extra_origins_env = os.getenv("CORS_EXTRA_ORIGINS", "").strip()
@@ -39,6 +47,12 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+# Role-based access control
+class UserRole(PyEnum):
+    ADMIN = "admin"
+    MANAGER = "manager" 
+    TEACHER = "teacher"
+
 # ORM models with actual column names
 class Campus(Base):
     __tablename__ = "campus"
@@ -50,6 +64,10 @@ class Teacher(Base):
     teacher_id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     is_foreign = Column(Boolean)
+    email = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    specialization = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
 
 class ClassModel(Base):
     __tablename__ = "class"
@@ -58,6 +76,9 @@ class ClassModel(Base):
     code_old = Column(String)
     code_new = Column(String)
     name = Column(String)
+    level = Column(String, nullable=True)
+    capacity = Column(Integer, nullable=True)
+    is_active = Column(Boolean, default=True)
 
 class Lesson(Base):
     __tablename__ = "lesson"
@@ -70,8 +91,20 @@ class Lesson(Base):
     end_time = Column(String)
     room = Column(String)
 
+class User(Base):
+    __tablename__ = "user"
+    user_id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    role = Column(Enum(UserRole), nullable=False, default=UserRole.TEACHER)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    teacher_id = Column(Integer, ForeignKey("teacher.teacher_id"), nullable=True)  # Link to teacher if applicable
+
 # Pydantic models
 class LessonOut(BaseModel):
+    id: Optional[int] = None  # Add lesson ID for CRUD operations
     week: int
     day: str
     start_time: str
@@ -85,6 +118,115 @@ class LessonOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+# Teacher Management Models
+class TeacherCreate(BaseModel):
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    specialization: Optional[str] = None
+    is_active: bool = True
+
+class TeacherUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    specialization: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class TeacherOut(BaseModel):
+    teacher_id: int
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    specialization: Optional[str] = None
+    is_active: bool
+    lesson_count: int = 0  # Number of lessons assigned
+
+    class Config:
+        from_attributes = True
+
+# Class Management Models
+class ClassCreate(BaseModel):
+    code_new: Optional[str] = None
+    code_old: Optional[str] = None
+    campus_name: str
+    level: Optional[str] = None
+    capacity: Optional[int] = None
+    is_active: bool = True
+
+class ClassUpdate(BaseModel):
+    code_new: Optional[str] = None
+    code_old: Optional[str] = None
+    campus_name: Optional[str] = None
+    level: Optional[str] = None
+    capacity: Optional[int] = None
+    is_active: Optional[bool] = None
+
+class ClassOut(BaseModel):
+    class_id: int
+    code_new: Optional[str] = None
+    code_old: Optional[str] = None
+    campus_name: str
+    level: Optional[str] = None
+    capacity: Optional[int] = None
+    is_active: bool
+    lesson_count: int = 0  # Number of lessons assigned
+
+    class Config:
+        from_attributes = True
+
+# Authentication Pydantic models
+class UserCreate(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+    role: UserRole = UserRole.TEACHER
+    teacher_id: Optional[int] = None
+
+class UserOut(BaseModel):
+    user_id: int
+    username: str
+    email: str
+    role: UserRole
+    is_active: bool
+    teacher_id: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    user: UserOut
+
+# Lesson management Pydantic models
+class LessonCreate(BaseModel):
+    teacher_id: int
+    class_id: int
+    week: int
+    day: str
+    start_time: str
+    end_time: str
+    room: Optional[str] = None
+
+class LessonUpdate(BaseModel):
+    teacher_id: Optional[int] = None
+    class_id: Optional[int] = None
+    week: Optional[int] = None
+    day: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    room: Optional[str] = None
+
+class ConflictCheck(BaseModel):
+    conflicts: List[str]
+    can_create: bool
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -101,15 +243,108 @@ app.add_middleware(
     # Allow Render hosted frontends and tunnels
     allow_origin_regex=r"(http://(localhost|127\.0\.0\.1):517\d|https://.*\.loca\.lt|https://.*\.onrender\.com)",
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
+
+# Security
+security = HTTPBearer()
+
+# Authentication utilities
+def hash_password(password: str) -> str:
+    """Hash password using SHA-256 with salt"""
+    salt = secrets.token_hex(16)
+    return hashlib.sha256((password + salt).encode()).hexdigest() + ":" + salt
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Verify password against hash"""
+    try:
+        hash_part, salt = hashed.split(":")
+        return hashlib.sha256((password + salt).encode()).hexdigest() == hash_part
+    except ValueError:
+        return False
+
+def create_access_token(data: dict) -> str:
+    """Create JWT access token"""
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+# DB session dependency
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)) -> User:
+    """Get current user from JWT token"""
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    user = db.query(User).filter(User.username == username).first()
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found or inactive")
+    return user
+
+def require_role(required_roles: List[UserRole]):
+    """Dependency to require specific roles"""
+    def role_checker(current_user: User = Depends(get_current_user)) -> User:
+        if current_user.role not in required_roles:
+            raise HTTPException(
+                status_code=403, 
+                detail=f"Access denied. Required roles: {[r.value for r in required_roles]}"
+            )
+        return current_user
+    return role_checker
+
+# Convenience role dependencies
+require_admin = require_role([UserRole.ADMIN])
+require_manager_or_admin = require_role([UserRole.MANAGER, UserRole.ADMIN])
+require_any_role = require_role([UserRole.TEACHER, UserRole.MANAGER, UserRole.ADMIN])
+
+# Calendar anchor API
+class AnchorOut(BaseModel):
+    anchor_date: str  # ISO date YYYY-MM-DD (Monday of academic week 1)
+
+@app.get("/calendar/anchor", response_model=AnchorOut)
+def get_calendar_anchor(db: Session = Depends(get_db)) -> AnchorOut:
+    """Return the earliest week present in lessons as anchor Monday.
+    If no data, default to today's Monday.
+    """
+    # Find minimal week number in DB
+    try:
+        row = db.execute(text("SELECT MIN(week) AS min_week FROM lesson")).fetchone()
+        min_week = int(row.min_week) if row and row.min_week is not None else None  # type: ignore[attr-defined]
+    except Exception:
+        min_week = None
+
+    # Base monday chosen as the monday of current week
+    today = datetime.now()
+    monday = today - timedelta(days=today.weekday())
+    # If weeks exist, compute anchor as monday - (min_week-1)*7 days
+    if min_week is None or min_week < 1:
+        anchor = monday
+    else:
+        anchor = monday - timedelta(days=(min_week - 1) * 7)
+    anchor = anchor.replace(hour=0, minute=0, second=0, microsecond=0)
+    return AnchorOut(anchor_date=anchor.strftime("%Y-%m-%d"))
 
 # Remove duplicate lifespan definition
 
 def ensure_indexes() -> None:
     """Ensure database schema and indexes exist"""
     try:
+        # Create all tables
+        Base.metadata.create_all(bind=engine)
+        
         with engine.connect() as conn:
             # Ensure 'room' column exists (SQLite allows ADD COLUMN)
             try:
@@ -130,7 +365,10 @@ def ensure_indexes() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_lesson_teacher_week_day_time ON lesson(teacher_id, week, day, start_time, end_time)",
                 "CREATE INDEX IF NOT EXISTS idx_lesson_class_week_day_time ON lesson(class_id, week, day, start_time, end_time)",
                 "CREATE INDEX IF NOT EXISTS idx_lesson_room ON lesson(room)",
-                "CREATE UNIQUE INDEX IF NOT EXISTS uniq_lesson ON lesson(class_id, teacher_id, week, day, start_time, end_time)"
+                "CREATE UNIQUE INDEX IF NOT EXISTS uniq_lesson ON lesson(class_id, teacher_id, week, day, start_time, end_time)",
+                "CREATE INDEX IF NOT EXISTS idx_user_username ON user(username)",
+                "CREATE INDEX IF NOT EXISTS idx_user_email ON user(email)",
+                "CREATE INDEX IF NOT EXISTS idx_user_role ON user(role)"
             ]
             
             for idx_sql in indexes:
@@ -140,17 +378,94 @@ def ensure_indexes() -> None:
                     logger.warning(f"Could not create index: {e}")
             
             conn.commit()
-            logger.info("Database indexes ensured")
+            logger.info("Database schema and indexes ensured")
+            
+        # Create default admin user if none exists
+        _create_default_admin()
+            
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
 
-# DB session dependency
-def get_db():
-    db = SessionLocal()
+def _create_default_admin():
+    """Create default admin user if no users exist"""
     try:
-        yield db
-    finally:
-        db.close()
+        db = SessionLocal()
+        try:
+            existing_users = db.query(User).count()
+            if existing_users == 0:
+                admin_user = User(
+                    username="admin",
+                    email="admin@ehome.com",
+                    hashed_password=hash_password("admin123"),  # Change this in production!
+                    role=UserRole.ADMIN,
+                    is_active=True
+                )
+                db.add(admin_user)
+                db.commit()
+                logger.info("Created default admin user (username: admin, password: admin123)")
+        except Exception as e:
+            logger.warning(f"Could not create default admin user: {e}")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Failed to create default admin: {e}")
+
+def check_lesson_conflicts(db: Session, lesson_data: LessonCreate, exclude_lesson_id: Optional[int] = None) -> List[str]:
+    """Check for scheduling conflicts with a new or updated lesson"""
+    conflicts = []
+    
+    # Get teacher and class info for better error messages
+    teacher = db.query(Teacher).filter(Teacher.teacher_id == lesson_data.teacher_id).first()
+    class_info = db.query(ClassModel).filter(ClassModel.class_id == lesson_data.class_id).first()
+    
+    if not teacher:
+        conflicts.append(f"Teacher with ID {lesson_data.teacher_id} not found")
+        return conflicts
+    
+    if not class_info:
+        conflicts.append(f"Class with ID {lesson_data.class_id} not found")
+        return conflicts
+    
+    # Build query for existing lessons in the same time slot
+    conflict_query = (
+        db.query(Lesson, ClassModel, Teacher)
+        .join(ClassModel, Lesson.class_id == ClassModel.class_id)
+        .join(Teacher, Lesson.teacher_id == Teacher.teacher_id)
+        .filter(
+            Lesson.week == lesson_data.week,
+            Lesson.day == lesson_data.day,
+        )
+    )
+    
+    # Exclude the lesson being updated
+    if exclude_lesson_id:
+        conflict_query = conflict_query.filter(Lesson.id != exclude_lesson_id)
+    
+    existing_lessons = conflict_query.all()
+    
+    # Check for time overlaps
+    for lesson, cls, existing_teacher in existing_lessons:
+        # Skip if lesson is None (shouldn't happen but safety check)
+        if lesson is None:
+            continue
+            
+        # Check if times overlap
+        if (lesson.start_time < lesson_data.end_time and lesson.end_time > lesson_data.start_time):
+            # Teacher conflict
+            if lesson.teacher_id == lesson_data.teacher_id:
+                conflicts.append(
+                    f"Teacher {teacher.name} is already scheduled for {cls.code_new or cls.code_old} "
+                    f"from {lesson.start_time} to {lesson.end_time}"
+                )
+            
+            # Room conflict
+            if lesson_data.room and lesson.room and lesson.room == lesson_data.room:
+                conflicts.append(
+                    f"Room {lesson_data.room} is already booked for {existing_teacher.name} "
+                    f"({cls.code_new or cls.code_old}) from {lesson.start_time} to {lesson.end_time}"
+                )
+    
+    return conflicts
 
 def group_consecutive_lessons(lessons: List[LessonOut]) -> List[LessonOut]:
     """Group consecutive 30-minute slots into longer sessions"""
@@ -231,6 +546,7 @@ def _build_lessons_from_rows(
 
         items.append(
             LessonOut(
+                id=lesson.id,
                 week=lesson.week,
                 day=lesson.day,
                 start_time=lesson.start_time,
@@ -255,6 +571,387 @@ def _deduplicate_lessons(lessons: List[LessonOut]) -> List[LessonOut]:
             seen.add(key)
             unique.append(item)
     return unique
+
+# Authentication endpoints
+@app.post("/auth/register", response_model=UserOut)
+def register(user_data: UserCreate, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    """Register a new user (admin only)"""
+    # Check if username or email already exists
+    if db.query(User).filter(User.username == user_data.username).first():
+        raise HTTPException(400, "Username already exists")
+    if db.query(User).filter(User.email == user_data.email).first():
+        raise HTTPException(400, "Email already exists")
+    
+    # Validate teacher_id if provided
+    if user_data.teacher_id:
+        teacher = db.query(Teacher).filter(Teacher.teacher_id == user_data.teacher_id).first()
+        if not teacher:
+            raise HTTPException(400, f"Teacher with id {user_data.teacher_id} not found")
+    
+    # Create new user
+    new_user = User(
+        username=user_data.username,
+        email=user_data.email,
+        hashed_password=hash_password(user_data.password),
+        role=user_data.role,
+        teacher_id=user_data.teacher_id
+    )
+    
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    
+    return new_user
+
+@app.post("/auth/users", response_model=UserOut)
+def create_user(
+    user_data: UserCreate, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Create a new user (admin only)"""
+    # Check if user already exists
+    existing_user = db.query(User).filter(User.username == user_data.username).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    
+    existing_email = db.query(User).filter(User.email == user_data.email).first()
+    if existing_email:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Validate teacher_id if provided
+    if user_data.teacher_id:
+        teacher = db.query(Teacher).filter(Teacher.teacher_id == user_data.teacher_id).first()
+        if not teacher:
+            raise HTTPException(400, f"Teacher with id {user_data.teacher_id} not found")
+    
+    # Hash password
+    hashed_password = hash_password(user_data.password)
+    
+    # Create user
+    user = User(
+        username=user_data.username,
+        email=user_data.email,
+        hashed_password=hashed_password,
+        role=user_data.role,
+        teacher_id=user_data.teacher_id,
+        is_active=True
+    )
+    
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    
+    return UserOut(
+        user_id=user.user_id,
+        username=user.username,
+        email=user.email,
+        role=user.role,
+        is_active=user.is_active,
+        teacher_id=user.teacher_id,
+        created_at=user.created_at.isoformat()
+    )
+
+@app.post("/auth/login", response_model=Token)
+def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
+    """Authenticate user and return JWT token"""
+    user = db.query(User).filter(User.username == user_credentials.username).first()
+    
+    if not user or not user.is_active or not verify_password(user_credentials.password, user.hashed_password):
+        raise HTTPException(401, "Invalid credentials")
+    
+    access_token = create_access_token({"sub": user.username})
+    
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        user=UserOut.from_orm(user)
+    )
+
+@app.get("/auth/me", response_model=UserOut)
+def get_current_user_info(current_user: User = Depends(get_current_user)):
+    """Get current user information"""
+    return current_user
+
+@app.get("/auth/users", response_model=List[UserOut])
+def list_users(db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    """List all users (admin only)"""
+    users = db.query(User).all()
+    return users
+
+@app.put("/auth/users/{user_id}", response_model=UserOut)
+def update_user(
+    user_id: int,
+    user_data: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Update user (admin only)"""
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    
+    # Update fields
+    user.username = user_data.username
+    user.email = user_data.email
+    user.role = user_data.role
+    user.teacher_id = user_data.teacher_id
+    
+    # Update password if provided
+    if user_data.password:
+        user.hashed_password = hash_password(user_data.password)
+    
+    db.commit()
+    db.refresh(user)
+    return user
+
+@app.delete("/auth/users/{user_id}")
+def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    """Delete user (admin only)"""
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    
+    if user.user_id == current_user.user_id:
+        raise HTTPException(400, "Cannot delete yourself")
+    
+    db.delete(user)
+    db.commit()
+    return {"message": "User deleted successfully"}
+
+# Lesson CRUD endpoints
+@app.post("/lessons/check-conflicts", response_model=ConflictCheck)
+def check_conflicts(
+    lesson_data: LessonCreate, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(require_manager_or_admin)
+):
+    """Check for conflicts before creating a lesson"""
+    conflicts = check_lesson_conflicts(db, lesson_data)
+    return ConflictCheck(conflicts=conflicts, can_create=len(conflicts) == 0)
+
+@app.post("/lessons", response_model=LessonOut)
+def create_lesson(
+    lesson_data: LessonCreate, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(require_manager_or_admin)
+):
+    """Create a new lesson"""
+    # Check for conflicts
+    conflicts = check_lesson_conflicts(db, lesson_data)
+    if conflicts:
+        raise HTTPException(400, f"Cannot create lesson due to conflicts: {'; '.join(conflicts)}")
+    
+    # Create the lesson
+    new_lesson = Lesson(
+        teacher_id=lesson_data.teacher_id,
+        class_id=lesson_data.class_id,
+        week=lesson_data.week,
+        day=lesson_data.day,
+        start_time=lesson_data.start_time,
+        end_time=lesson_data.end_time,
+        room=lesson_data.room
+    )
+    
+    db.add(new_lesson)
+    db.commit()
+    db.refresh(new_lesson)
+    
+    # Return the created lesson in the expected format
+    lesson_with_details = (
+        db.query(Lesson, ClassModel, Teacher)
+        .join(ClassModel, Lesson.class_id == ClassModel.class_id)
+        .join(Teacher, Lesson.teacher_id == Teacher.teacher_id)
+        .filter(Lesson.id == new_lesson.id)
+        .first()
+    )
+    
+    if not lesson_with_details:
+        raise HTTPException(500, "Failed to retrieve created lesson")
+    
+    lesson, cls, teacher = lesson_with_details
+    return LessonOut(
+        id=lesson.id,
+        week=lesson.week,
+        day=lesson.day,
+        start_time=lesson.start_time,
+        end_time=lesson.end_time,
+        class_code=cls.code_new or cls.code_old,
+        teacher_name=teacher.name,
+        campus_name=cls.campus_name,
+        room=lesson.room,
+        duration_minutes=30  # Default to 30 minutes
+    )
+
+@app.get("/lessons/{lesson_id}", response_model=LessonOut)
+def get_lesson(
+    lesson_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(require_any_role)
+):
+    """Get a specific lesson by ID"""
+    lesson_with_details = (
+        db.query(Lesson, ClassModel, Teacher)
+        .join(ClassModel, Lesson.class_id == ClassModel.class_id)
+        .join(Teacher, Lesson.teacher_id == Teacher.teacher_id)
+        .filter(Lesson.id == lesson_id)
+        .first()
+    )
+    
+    if not lesson_with_details:
+        raise HTTPException(404, "Lesson not found")
+    
+    lesson, cls, teacher = lesson_with_details
+    return LessonOut(
+        id=lesson.id,
+        week=lesson.week,
+        day=lesson.day,
+        start_time=lesson.start_time,
+        end_time=lesson.end_time,
+        class_code=cls.code_new or cls.code_old,
+        teacher_name=teacher.name,
+        campus_name=cls.campus_name,
+        room=lesson.room,
+        duration_minutes=30
+    )
+
+@app.put("/lessons/{lesson_id}", response_model=LessonOut)
+def update_lesson(
+    lesson_id: int,
+    lesson_update: LessonUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_manager_or_admin)
+):
+    """Update an existing lesson"""
+    # Get the existing lesson
+    existing_lesson = db.query(Lesson).filter(Lesson.id == lesson_id).first()
+    if not existing_lesson:
+        raise HTTPException(404, "Lesson not found")
+    
+    # Create a LessonCreate object for conflict checking with updated values
+    lesson_data = LessonCreate(
+        teacher_id=lesson_update.teacher_id or existing_lesson.teacher_id,
+        class_id=lesson_update.class_id or existing_lesson.class_id,
+        week=lesson_update.week or existing_lesson.week,
+        day=lesson_update.day or existing_lesson.day,
+        start_time=lesson_update.start_time or existing_lesson.start_time,
+        end_time=lesson_update.end_time or existing_lesson.end_time,
+        room=lesson_update.room if lesson_update.room is not None else existing_lesson.room
+    )
+    
+    # Check for conflicts (excluding the current lesson)
+    conflicts = check_lesson_conflicts(db, lesson_data, exclude_lesson_id=lesson_id)
+    if conflicts:
+        raise HTTPException(400, f"Cannot update lesson due to conflicts: {'; '.join(conflicts)}")
+    
+    # Update the lesson
+    if lesson_update.teacher_id is not None:
+        existing_lesson.teacher_id = lesson_update.teacher_id
+    if lesson_update.class_id is not None:
+        existing_lesson.class_id = lesson_update.class_id
+    if lesson_update.week is not None:
+        existing_lesson.week = lesson_update.week
+    if lesson_update.day is not None:
+        existing_lesson.day = lesson_update.day
+    if lesson_update.start_time is not None:
+        existing_lesson.start_time = lesson_update.start_time
+    if lesson_update.end_time is not None:
+        existing_lesson.end_time = lesson_update.end_time
+    if lesson_update.room is not None:
+        existing_lesson.room = lesson_update.room
+    
+    db.commit()
+    db.refresh(existing_lesson)
+    
+    # Return the updated lesson
+    lesson_with_details = (
+        db.query(Lesson, ClassModel, Teacher)
+        .join(ClassModel, Lesson.class_id == ClassModel.class_id)
+        .join(Teacher, Lesson.teacher_id == Teacher.teacher_id)
+        .filter(Lesson.id == lesson_id)
+        .first()
+    )
+    
+    lesson, cls, teacher = lesson_with_details
+    return LessonOut(
+        id=lesson.id,
+        week=lesson.week,
+        day=lesson.day,
+        start_time=lesson.start_time,
+        end_time=lesson.end_time,
+        class_code=cls.code_new or cls.code_old,
+        teacher_name=teacher.name,
+        campus_name=cls.campus_name,
+        room=lesson.room,
+        duration_minutes=30
+    )
+
+@app.delete("/lessons/{lesson_id}")
+def delete_lesson(
+    lesson_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(require_manager_or_admin)
+):
+    """Delete a lesson"""
+    lesson = db.query(Lesson).filter(Lesson.id == lesson_id).first()
+    if not lesson:
+        raise HTTPException(404, "Lesson not found")
+    
+    db.delete(lesson)
+    db.commit()
+    return {"message": "Lesson deleted successfully"}
+
+@app.get("/lessons", response_model=List[LessonOut])
+def list_lessons(
+    week: Optional[int] = None,
+    day: Optional[str] = None,
+    teacher_id: Optional[int] = None,
+    class_id: Optional[int] = None,
+    room: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_any_role)
+):
+    """List lessons with optional filters"""
+    query = (
+        db.query(Lesson, ClassModel, Teacher)
+        .join(ClassModel, Lesson.class_id == ClassModel.class_id)
+        .join(Teacher, Lesson.teacher_id == Teacher.teacher_id)
+    )
+    
+    if week is not None:
+        query = query.filter(Lesson.week == week)
+    if day is not None:
+        query = query.filter(Lesson.day == day)
+    if teacher_id is not None:
+        query = query.filter(Lesson.teacher_id == teacher_id)
+    if class_id is not None:
+        query = query.filter(Lesson.class_id == class_id)
+    if room is not None:
+        query = query.filter(Lesson.room == room)
+    
+    lessons = query.order_by(Lesson.week, Lesson.day, Lesson.start_time).all()
+    
+    result = []
+    for lesson, cls, teacher in lessons:
+        # Skip if any of the joined objects are None (safety check)
+        if lesson is None or cls is None or teacher is None:
+            logger.warning(f"Skipping lesson due to None object: lesson={lesson}, cls={cls}, teacher={teacher}")
+            continue
+            
+        result.append(LessonOut(
+            id=lesson.id,
+            week=lesson.week,
+            day=lesson.day,
+            start_time=lesson.start_time,
+            end_time=lesson.end_time,
+            class_code=cls.code_new or cls.code_old,
+            teacher_name=teacher.name,
+            campus_name=cls.campus_name,
+            room=lesson.room,
+            duration_minutes=30
+        ))
+    
+    return result
 
 @app.get("/my/{teacher_id}", response_model=List[LessonOut])
 def get_teacher_schedule(
@@ -398,24 +1095,368 @@ def _get_schedule_rows(db: Session, teacher_id: Optional[int] = None, class_id: 
     
     return query.order_by(Lesson.week, Lesson.day, Lesson.start_time).all()
 
-# Utility endpoints
-@app.get("/teachers")
-def list_teachers(db: Session = Depends(get_db)):
-    """List all teachers"""
-    teachers = db.query(Teacher).all()
-    return [
-        {"teacher_id": t.teacher_id, "name": t.name, "is_foreign": t.is_foreign} 
-        for t in teachers
-    ]
+# Teacher Management Endpoints
+@app.get("/teachers", response_model=List[TeacherOut])
+def list_teachers(
+    search: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_any_role)
+):
+    """List all teachers with optional filtering"""
+    query = db.query(Teacher)
+    
+    if search:
+        query = query.filter(Teacher.name.ilike(f"%{search}%"))
+    if is_active is not None:
+        query = query.filter(Teacher.is_active == is_active)
+    
+    teachers = query.all()
+    
+    # Count lessons for each teacher
+    result = []
+    for teacher in teachers:
+        # Skip if teacher is None (safety check)
+        if teacher is None:
+            logger.warning("Skipping None teacher object")
+            continue
+            
+        lesson_count = db.query(Lesson).filter(Lesson.teacher_id == teacher.teacher_id).count()
+        result.append(TeacherOut(
+            teacher_id=teacher.teacher_id,
+            name=teacher.name,
+            email=teacher.email,
+            phone=teacher.phone,
+            specialization=teacher.specialization,
+            is_active=teacher.is_active,
+            lesson_count=lesson_count
+        ))
+    
+    return result
 
-@app.get("/classes")
-def list_classes(db: Session = Depends(get_db)):
-    """List all classes"""
-    classes = db.query(ClassModel).all()
-    return [
-        {"class_id": c.class_id, "name": c.name, "code_new": c.code_new, "code_old": c.code_old} 
-        for c in classes
-    ]
+@app.post("/teachers", response_model=TeacherOut)
+def create_teacher(
+    teacher_data: TeacherCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_manager_or_admin)
+):
+    """Create a new teacher"""
+    # Check if teacher with same name already exists
+    existing = db.query(Teacher).filter(Teacher.name == teacher_data.name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Teacher with this name already exists")
+    
+    teacher = Teacher(
+        name=teacher_data.name,
+        email=teacher_data.email,
+        phone=teacher_data.phone,
+        specialization=teacher_data.specialization,
+        is_active=teacher_data.is_active,
+        is_foreign=False  # Default for manually created teachers
+    )
+    
+    db.add(teacher)
+    db.commit()
+    db.refresh(teacher)
+    
+    return TeacherOut(
+        teacher_id=teacher.teacher_id,
+        name=teacher.name,
+        email=teacher.email,
+        phone=teacher.phone,
+        specialization=teacher.specialization,
+        is_active=teacher.is_active,
+        lesson_count=0
+    )
+
+@app.get("/teachers/{teacher_id}", response_model=TeacherOut)
+def get_teacher(
+    teacher_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_any_role)
+):
+    """Get a specific teacher"""
+    teacher = db.query(Teacher).filter(Teacher.teacher_id == teacher_id).first()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    
+    lesson_count = db.query(Lesson).filter(Lesson.teacher_id == teacher_id).count()
+    
+    return TeacherOut(
+        teacher_id=teacher.teacher_id,
+        name=teacher.name,
+        email=teacher.email,
+        phone=teacher.phone,
+        specialization=teacher.specialization,
+        is_active=teacher.is_active,
+        lesson_count=lesson_count
+    )
+
+@app.put("/teachers/{teacher_id}", response_model=TeacherOut)
+def update_teacher(
+    teacher_id: int,
+    teacher_data: TeacherUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_manager_or_admin)
+):
+    """Update a teacher"""
+    teacher = db.query(Teacher).filter(Teacher.teacher_id == teacher_id).first()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    
+    # Check if new name conflicts with existing teacher
+    if teacher_data.name and teacher_data.name != teacher.name:
+        existing = db.query(Teacher).filter(Teacher.name == teacher_data.name).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Teacher with this name already exists")
+    
+    # Update fields
+    for field, value in teacher_data.dict(exclude_unset=True).items():
+        setattr(teacher, field, value)
+    
+    db.commit()
+    db.refresh(teacher)
+    
+    lesson_count = db.query(Lesson).filter(Lesson.teacher_id == teacher_id).count()
+    
+    return TeacherOut(
+        teacher_id=teacher.teacher_id,
+        name=teacher.name,
+        email=teacher.email,
+        phone=teacher.phone,
+        specialization=teacher.specialization,
+        is_active=teacher.is_active,
+        lesson_count=lesson_count
+    )
+
+@app.delete("/teachers/{teacher_id}")
+def delete_teacher(
+    teacher_id: int,
+    force: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_manager_or_admin)
+):
+    """Delete a teacher (with safety checks)"""
+    teacher = db.query(Teacher).filter(Teacher.teacher_id == teacher_id).first()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    
+    # Check for existing lessons
+    lesson_count = db.query(Lesson).filter(Lesson.teacher_id == teacher_id).count()
+    if lesson_count > 0 and not force:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot delete teacher with {lesson_count} assigned lessons. Use force=true to override."
+        )
+    
+    # If forced, deactivate instead of deleting to preserve data integrity
+    if lesson_count > 0 and force:
+        teacher.is_active = False
+        db.commit()
+        return {"message": f"Teacher deactivated (had {lesson_count} lessons)"}
+    else:
+        db.delete(teacher)
+        db.commit()
+        return {"message": "Teacher deleted successfully"}
+
+# Class Management Endpoints
+@app.get("/classes", response_model=List[ClassOut])
+def list_classes(
+    search: Optional[str] = None,
+    campus: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_any_role)
+):
+    """List all classes with optional filtering"""
+    query = db.query(ClassModel)
+    
+    if search:
+        query = query.filter(
+            or_(
+                ClassModel.code_new.ilike(f"%{search}%"),
+                ClassModel.code_old.ilike(f"%{search}%"),
+                ClassModel.name.ilike(f"%{search}%")
+            )
+        )
+    if campus:
+        query = query.filter(ClassModel.campus_name.ilike(f"%{campus}%"))
+    if is_active is not None:
+        query = query.filter(ClassModel.is_active == is_active)
+    
+    classes = query.all()
+    
+    # Count lessons for each class
+    result = []
+    for cls in classes:
+        # Skip if class is None (safety check)
+        if cls is None:
+            logger.warning("Skipping None class object")
+            continue
+            
+        lesson_count = db.query(Lesson).filter(Lesson.class_id == cls.class_id).count()
+        result.append(ClassOut(
+            class_id=cls.class_id,
+            code_new=cls.code_new,
+            code_old=cls.code_old,
+            campus_name=cls.campus_name,
+            level=cls.level,
+            capacity=cls.capacity,
+            is_active=cls.is_active,
+            lesson_count=lesson_count
+        ))
+    
+    return result
+
+@app.post("/classes", response_model=ClassOut)
+def create_class(
+    class_data: ClassCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_manager_or_admin)
+):
+    """Create a new class"""
+    # Check for duplicate codes
+    if class_data.code_new:
+        existing = db.query(ClassModel).filter(ClassModel.code_new == class_data.code_new).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Class with this new code already exists")
+    
+    if class_data.code_old:
+        existing = db.query(ClassModel).filter(ClassModel.code_old == class_data.code_old).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Class with this old code already exists")
+    
+    cls = ClassModel(
+        code_new=class_data.code_new,
+        code_old=class_data.code_old,
+        campus_name=class_data.campus_name,
+        level=class_data.level,
+        capacity=class_data.capacity,
+        is_active=class_data.is_active,
+        name=class_data.code_new or class_data.code_old or f"Class {class_data.campus_name}"
+    )
+    
+    db.add(cls)
+    db.commit()
+    db.refresh(cls)
+    
+    return ClassOut(
+        class_id=cls.class_id,
+        code_new=cls.code_new,
+        code_old=cls.code_old,
+        campus_name=cls.campus_name,
+        level=cls.level,
+        capacity=cls.capacity,
+        is_active=cls.is_active,
+        lesson_count=0
+    )
+
+@app.get("/classes/{class_id}", response_model=ClassOut)
+def get_class(
+    class_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_any_role)
+):
+    """Get a specific class"""
+    cls = db.query(ClassModel).filter(ClassModel.class_id == class_id).first()
+    if not cls:
+        raise HTTPException(status_code=404, detail="Class not found")
+    
+    lesson_count = db.query(Lesson).filter(Lesson.class_id == class_id).count()
+    
+    return ClassOut(
+        class_id=cls.class_id,
+        code_new=cls.code_new,
+        code_old=cls.code_old,
+        campus_name=cls.campus_name,
+        level=cls.level,
+        capacity=cls.capacity,
+        is_active=cls.is_active,
+        lesson_count=lesson_count
+    )
+
+@app.put("/classes/{class_id}", response_model=ClassOut)
+def update_class(
+    class_id: int,
+    class_data: ClassUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_manager_or_admin)
+):
+    """Update a class"""
+    cls = db.query(ClassModel).filter(ClassModel.class_id == class_id).first()
+    if not cls:
+        raise HTTPException(status_code=404, detail="Class not found")
+    
+    # Check for duplicate codes (excluding current class)
+    if class_data.code_new and class_data.code_new != cls.code_new:
+        existing = db.query(ClassModel).filter(
+            ClassModel.code_new == class_data.code_new,
+            ClassModel.class_id != class_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Class with this new code already exists")
+    
+    if class_data.code_old and class_data.code_old != cls.code_old:
+        existing = db.query(ClassModel).filter(
+            ClassModel.code_old == class_data.code_old,
+            ClassModel.class_id != class_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Class with this old code already exists")
+    
+    # Update fields
+    for field, value in class_data.dict(exclude_unset=True).items():
+        setattr(cls, field, value)
+    
+    # Update name if codes changed
+    if class_data.code_new or class_data.code_old:
+        cls.name = cls.code_new or cls.code_old or cls.name
+    
+    db.commit()
+    db.refresh(cls)
+    
+    lesson_count = db.query(Lesson).filter(Lesson.class_id == class_id).count()
+    
+    return ClassOut(
+        class_id=cls.class_id,
+        code_new=cls.code_new,
+        code_old=cls.code_old,
+        campus_name=cls.campus_name,
+        level=cls.level,
+        capacity=cls.capacity,
+        is_active=cls.is_active,
+        lesson_count=lesson_count
+    )
+
+@app.delete("/classes/{class_id}")
+def delete_class(
+    class_id: int,
+    force: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_manager_or_admin)
+):
+    """Delete a class (with safety checks)"""
+    cls = db.query(ClassModel).filter(ClassModel.class_id == class_id).first()
+    if not cls:
+        raise HTTPException(status_code=404, detail="Class not found")
+    
+    # Check for existing lessons
+    lesson_count = db.query(Lesson).filter(Lesson.class_id == class_id).count()
+    if lesson_count > 0 and not force:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot delete class with {lesson_count} assigned lessons. Use force=true to override."
+        )
+    
+    # If forced, deactivate instead of deleting to preserve data integrity
+    if lesson_count > 0 and force:
+        cls.is_active = False
+        db.commit()
+        return {"message": f"Class deactivated (had {lesson_count} lessons)"}
+    else:
+        db.delete(cls)
+        db.commit()
+        return {"message": "Class deleted successfully"}
 
 @app.get("/health")
 def health_check():

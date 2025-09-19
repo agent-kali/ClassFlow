@@ -1,9 +1,10 @@
 import React from 'react';
-import { api } from '../api/client';
+import { api, auth } from '../api/client';
 import type { LessonOut, Teacher } from '../api/types';
 import LessonCard from './LessonCard';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { format, addDays } from 'date-fns';
+import { getWeekStart, setAcademicAnchor } from '../lib/time';
 
 const dayOptions = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const dayOrder: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
@@ -21,7 +22,7 @@ export const TeacherTimeline: React.FC = () => {
     const saved = localStorage.getItem('selectedTeacherId');
     return saved ? Number(saved) : undefined;
   });
-  const [week, setWeek] = React.useState<number | undefined>(1);
+  const [week, setWeek] = React.useState<number | undefined>(3);
   const [day, setDay] = React.useState<string>('Mon');
   const [campus, setCampus] = React.useState<string | undefined>(undefined);
   const [grouped, setGrouped] = React.useState<boolean>(true);
@@ -32,18 +33,30 @@ export const TeacherTimeline: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const handleLogout = () => {
+    api.logout();
+    navigate('/login');
+  };
+
   React.useEffect(() => {
     api
       .listTeachers()
       .then((list) => {
         setTeachers(list);
         if (selectedTeacherId === undefined) {
-          const dan = list.find((t) => t.name.toLowerCase().includes('daniel'));
+          const dan = list.find((t) => t.name === 'Mr Daniel');
           if (dan) setSelectedTeacherId(dan.teacher_id);
         }
       })
       .catch((e) => setError(String(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Fetch calendar anchor once
+  React.useEffect(() => {
+    api.getAnchor()
+      .then(({ anchor_date }) => setAcademicAnchor(anchor_date))
+      .catch((err) => console.warn('Failed to fetch calendar anchor:', err));
   }, []);
 
   async function load() {
@@ -91,10 +104,8 @@ export const TeacherTimeline: React.FC = () => {
   };
 
   const getWeekDateRange = (weekNum: number): string => {
-    // Simple calculation: assume week 1 starts on a Monday
-    // You can adjust this based on your actual week calculation logic
-    const startDate = new Date(2024, 7, 5); // Aug 5, 2024 (Monday)
-    const weekStart = addDays(startDate, (weekNum - 1) * 7);
+    // Use the academic calendar anchor from the API
+    const weekStart = getWeekStart(weekNum);
     const weekEnd = addDays(weekStart, 6);
     return `${format(weekStart, 'dd/MM')} - ${format(weekEnd, 'dd/MM')}`;
   };
@@ -110,7 +121,7 @@ export const TeacherTimeline: React.FC = () => {
   const displayLessons = React.useMemo(() => {
     if (!lessons) return [] as LessonOut[];
     const seen = new Set<string>();
-    const out: LessonOut[] = [];
+    let out: LessonOut[] = [];
     for (const l of lessons) {
       // Deduplicate by week|day|start|end|class|campus (ignore room differences)
       const key = [l.week, l.day, l.start_time, l.end_time, l.class_code, l.campus_name].join('|');
@@ -118,6 +129,12 @@ export const TeacherTimeline: React.FC = () => {
       seen.add(key);
       out.push(l);
     }
+    
+    // Apply campus filter
+    if (campus) {
+      out = out.filter(l => l.campus_name === campus);
+    }
+    
     out.sort((a, b) => {
       if (a.week !== b.week) return a.week - b.week;
       const da = dayOrder[a.day] ?? 0;
@@ -126,16 +143,23 @@ export const TeacherTimeline: React.FC = () => {
       return toMinutes(a.start_time) - toMinutes(b.start_time);
     });
     return out;
-  }, [lessons]);
+  }, [lessons, campus]);
 
   // Day -> number of lessons map for the current week
   const dayCounts = React.useMemo(() => {
     const counts: Record<string, number> = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
-    (weekly || []).forEach((l) => {
+    let weeklyLessons = weekly || [];
+    
+    // Apply campus filter to weekly lessons too
+    if (campus) {
+      weeklyLessons = weeklyLessons.filter(l => l.campus_name === campus);
+    }
+    
+    weeklyLessons.forEach((l) => {
       counts[l.day] = (counts[l.day] || 0) + 1;
     });
     return counts;
-  }, [weekly]);
+  }, [weekly, campus]);
 
   return (
     <div className="min-h-screen bg-gray-50 overflow-x-hidden">
@@ -144,33 +168,53 @@ export const TeacherTimeline: React.FC = () => {
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-semibold text-gray-900">E‑Home Schedule</h1>
-            <div className="flex items-center gap-2">
-              <button
-                className="rounded-lg bg-orange-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-orange-700 transition-colors"
-                onClick={() => setDay(todayDay())}
-                title="Jump to today"
-              >
-                Today
-              </button>
-              <button
-                onClick={load}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                disabled={selectedTeacherId === undefined || loading}
-                aria-busy={loading}
-              >
-                {loading ? 'Loading…' : 'Reload'}
-              </button>
-              <button
-                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                onClick={() => {
-                  const params = new URLSearchParams();
-                  if (selectedTeacherId) params.set('teacher', String(selectedTeacherId));
-                  if (week) params.set('week', String(week));
-                  navigate(`/week?${params.toString()}`);
-                }}
-              >
-                Week
-              </button>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded-lg bg-orange-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-orange-700 transition-colors"
+                  onClick={() => setDay(todayDay())}
+                  title="Jump to today"
+                >
+                  Today
+                </button>
+                <button
+                  onClick={load}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  disabled={selectedTeacherId === undefined || loading}
+                  aria-busy={loading}
+                >
+                  {loading ? 'Loading…' : 'Reload'}
+                </button>
+                <button
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    if (selectedTeacherId) params.set('teacher', String(selectedTeacherId));
+                    if (week) params.set('week', String(week));
+                    navigate(`/week?${params.toString()}`);
+                  }}
+                >
+                  Week
+                </button>
+              </div>
+              
+              {/* User info and logout */}
+              <div className="flex items-center gap-3 pl-3 border-l border-gray-200">
+                {auth.getUser() && (
+                  <div className="text-gray-700 text-sm">
+                    <span className="font-medium">{auth.getUser()?.username}</span>
+                    <span className="ml-2 px-2 py-1 bg-gray-200 text-gray-800 rounded text-xs uppercase">
+                      {auth.getUser()?.role}
+                    </span>
+                  </div>
+                )}
+                <button
+                  onClick={handleLogout}
+                  className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-md text-sm font-medium transition-colors shadow-md"
+                >
+                  Logout
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -214,7 +258,7 @@ export const TeacherTimeline: React.FC = () => {
           <div className="flex items-center justify-center gap-4">
             <button
               className="rounded-full border border-gray-300 bg-white p-1.5 text-gray-600 hover:bg-gray-50 transition-colors"
-              onClick={() => setWeek((w) => (w && w > 1 ? w - 1 : 1))}
+              onClick={() => setWeek((w) => (w && w > 3 ? w - 1 : 3))}
               aria-label="Previous week"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -228,7 +272,7 @@ export const TeacherTimeline: React.FC = () => {
             </div>
             <button
               className="rounded-full border border-gray-300 bg-white p-1.5 text-gray-600 hover:bg-gray-50 transition-colors"
-              onClick={() => setWeek((w) => (w ? Math.min(w + 1, 5) : 1))}
+              onClick={() => setWeek((w) => (w ? Math.min(w + 1, 5) : 3))}
               aria-label="Next week"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -350,21 +394,37 @@ export const TeacherTimeline: React.FC = () => {
         {/* Lessons List */}
         {displayLessons.length > 0 && (
           <div className="space-y-3">
-            {displayLessons.map((l, idx) => (
-              <LessonCard
-                key={`${l.week}-${l.day}-${l.start_time}-${idx}`}
-                title={l.co_teachers && l.co_teachers.length ? `${l.co_teachers.join(' - ')} - ${l.class_code}` : l.class_code}
-                start={l.start_time}
-                end={l.end_time}
-                room={l.room || 'TBD'}
-                campus={l.campus_name}
-                teachers={[
-                  { name: l.teacher_name, is_primary: true },
-                  ...(l.co_teachers || []).map(name => ({ name, is_primary: false }))
-                ]}
-                isNow={isNowSlot(l)}
-              />
-            ))}
+            {displayLessons.map((l, idx) => {
+              // Clean up class code by removing malformed parts
+              const cleanClassCode = l.class_code
+                .split('\n')[0] // Take only the first line
+                .replace(/^\d+\s*/, '') // Remove leading numbers
+                .trim();
+              
+              // Clean up co-teachers by filtering out malformed names
+              const cleanCoTeachers = (l.co_teachers || [])
+                .filter(name => !name.includes('\n') && name !== l.teacher_name)
+                .filter(name => name.length < 50); // Filter out obviously malformed long names
+              
+              // Campus name is now correct from backend
+              const campusName = l.campus_name;
+              
+              return (
+                <LessonCard
+                  key={`${l.week}-${l.day}-${l.start_time}-${idx}`}
+                  title={cleanClassCode}
+                  start={l.start_time}
+                  end={l.end_time}
+                  room={l.room || 'TBD'}
+                  campus={campusName}
+                  teachers={[
+                    { name: l.teacher_name, is_primary: true },
+                    ...cleanCoTeachers.map(name => ({ name, is_primary: false }))
+                  ]}
+                  isNow={isNowSlot(l)}
+                />
+              );
+            })}
           </div>
         )}
       </div>

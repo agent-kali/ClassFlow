@@ -63,7 +63,7 @@ export default function LessonCard({
         "relative bg-surface-bg border border-hairline rounded-[16px] shadow-2",
         "hover:shadow-hover hover:-translate-y-0.5 transition-all duration-150",
         "overflow-hidden min-w-0 flex flex-col h-full w-full",
-        density === 'tight' ? "p-5" : density === 'normal' ? "p-6" : "p-6",
+        density === 'tight' ? "p-3" : density === 'normal' ? "p-4" : "p-4",
         isNow ? "bg-orange-50/20" : "",
       ].join(" ")}
       aria-label={`${title ? title + '. ' : ''}${start}–${end}${room ? `. Room ${room}` : ''}`}
@@ -71,37 +71,37 @@ export default function LessonCard({
       {/* Left campus color accent stripe */}
       <div className={`absolute left-0 top-0 bottom-0 w-1 ${barColor}`} />
 
-      <div className="flex items-start justify-between gap-4 min-w-0">
+      <div className="flex items-center gap-3 min-w-0">
         <div className="min-w-0 flex-1">
-          {/* Time - 16px, 600 weight - FIRST */}
-          <div className="tabular-nums text-base font-semibold text-text-primary mb-2">
+          {/* Time - 14px, 600 weight - FIRST */}
+          <div className="tabular-nums text-sm font-semibold text-text-primary mb-1">
             {start} — {end}
           </div>
 
-          {/* Vietnamese Co-teacher(s) - 12-13px, 500 weight - SECOND */}
+          {/* Vietnamese Co-teacher(s) - 11px, 500 weight - SECOND */}
           {coTeachers.length > 0 && (
-            <div className="text-[13px] font-medium text-text-secondary leading-tight mb-2 tracking-wide">
+            <div className="text-[11px] font-medium text-text-secondary leading-tight mb-1 tracking-wide">
               VN: {coTeachers.map(t => t.name).join(', ')}
             </div>
           )}
 
-          {/* Title (class name) - 17-18px, 600-700 weight - THIRD */}
+          {/* Title (class name) - 15px, 600-700 weight - THIRD */}
           {title && (
-            <div className="text-[17px] font-semibold text-text-primary leading-tight">
+            <div className="text-[15px] font-semibold text-text-primary leading-tight">
               {title}
             </div>
           )}
         </div>
 
-        {/* Room address block - white with campus-colored border */}
+        {/* Room address block - more compact */}
         {room && (
-          <div className={`shrink-0 rounded-[14px] bg-surface-bg border ${campusBorderColor} px-3 py-3 text-center min-w-[80px] shadow-1`}>
-            {/* "ROOM" label - 12-13px, uppercase, medium, gray */}
-            <div className="text-[12px] font-medium text-text-secondary uppercase tracking-[0.02em] mb-1">
+          <div className={`shrink-0 rounded-[12px] bg-surface-bg border ${campusBorderColor} px-2.5 py-2 text-center min-w-[70px] shadow-1`}>
+            {/* "ROOM" label - 10px, uppercase, medium, gray */}
+            <div className="text-[10px] font-medium text-text-secondary uppercase tracking-[0.02em] mb-0.5">
               Room
             </div>
-            {/* Address value - 18-20px, bold, near-black */}
-            <div className="text-[19px] font-bold text-text-primary leading-tight">
+            {/* Address value - 14px, bold, near-black */}
+            <div className="text-[14px] font-bold text-text-primary leading-tight">
               {room}
             </div>
           </div>

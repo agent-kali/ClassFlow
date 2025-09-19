@@ -17,12 +17,22 @@ export const dayOrder: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4
 
 // Academic calendar helpers
 // Anchor Week 1 to the Monday of the first academic week
-// Example: 2025-08-04 (Mon) per the provided Excel
-export const ACADEMIC_START = new Date('2025-08-04T00:00:00');
+// Updated to September 2025 per current schedule
+// Default anchor, but allow override via URL (?anchor=YYYY-MM-DD)
+let cachedAnchor: Date | null = null;
+export const setAcademicAnchor = (isoDate: string) => {
+  cachedAnchor = new Date(`${isoDate}T00:00:00`);
+};
+export const getAcademicAnchor = (): Date => {
+  if (cachedAnchor) return cachedAnchor;
+  // Fallback default if not set - updated to September 1st, 2025
+  return new Date('2025-09-01T00:00:00');
+};
 
 export const getWeekStart = (week: number): Date => {
-  const start = new Date(ACADEMIC_START);
-  start.setDate(ACADEMIC_START.getDate() + (Math.max(1, week) - 1) * 7);
+  const anchor = getAcademicAnchor();
+  const start = new Date(anchor);
+  start.setDate(anchor.getDate() + (Math.max(1, week) - 1) * 7);
   start.setHours(0, 0, 0, 0);
   return start;
 };

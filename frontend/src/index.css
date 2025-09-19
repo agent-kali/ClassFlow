@@ -2,6 +2,79 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Drag & Drop Calendar Styles */
+.drag-drop-calendar {
+  /* Custom styles for the drag & drop calendar */
+}
+
+.lesson-card {
+  transition: all 0.2s ease-in-out;
+  user-select: none;
+}
+
+.lesson-card:hover {
+  transform: translateY(-1px);
+}
+
+.lesson-card:active {
+  transform: scale(0.98);
+}
+
+.lesson-card.dragging {
+  opacity: 0.5;
+  transform: rotate(5deg);
+  z-index: 1000;
+}
+
+.time-slot {
+  position: relative;
+  transition: all 0.2s ease-in-out;
+}
+
+.time-slot.drop-target {
+  background-color: rgba(34, 197, 94, 0.1);
+  border-color: rgb(34, 197, 94);
+}
+
+.time-slot.drop-target.invalid {
+  background-color: rgba(239, 68, 68, 0.1);
+  border-color: rgb(239, 68, 68);
+}
+
+.calendar-grid {
+  /* Ensure grid lines are visible */
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.calendar-grid > div {
+  border-right: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* Drag ghost image styling */
+.lesson-card[draggable="true"] {
+  cursor: grab;
+}
+
+.lesson-card[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+/* Smooth animations for drag states */
+@keyframes dragPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.lesson-card.drag-source {
+  animation: dragPulse 1s infinite;
+}
+
 /* Utility classes */
 
 /* Ensure numbers align nicely */

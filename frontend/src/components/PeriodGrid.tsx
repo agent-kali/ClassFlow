@@ -287,16 +287,21 @@ function LessonCell({ lesson }: { lesson: LessonOut }) {
       </div>
       
       {/* Time range */}
-      <div className="text-sm text-gray-900 tabular-nums font-medium">
-        {lesson.start_time} — {lesson.end_time}
-      </div>
-      
-      {/* Teacher info */}
-      {coTeachers && (
-        <div className="text-xs text-gray-600 truncate" title={coTeachers}>
-          {coTeachers}
-        </div>
-      )}
+          <div className="text-sm text-gray-900 tabular-nums font-semibold">
+            {lesson.start_time} — {lesson.end_time}
+          </div>
+
+          {/* Class + primary teacher */}
+          <div className="text-[15px] font-semibold text-gray-900 truncate">
+            {lesson.class_code}
+          </div>
+
+          {/* Co-teachers (VN) */}
+          {coTeachers && (
+            <div className="text-xs text-gray-600 truncate" title={coTeachers}>
+              VN: {coTeachers}
+            </div>
+          )}
     </div>
   );
 }
