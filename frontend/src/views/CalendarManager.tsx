@@ -1,8 +1,17 @@
 import React, { useState } from 'react';
 import DragDropCalendar from '../components/DragDropCalendar';
 
+const MIN_WEEK = 1;
+const MAX_WEEK = 5;
+
 const CalendarManager: React.FC = () => {
-  const [currentWeek, setCurrentWeek] = useState(5); // Start with week 5 since that has data
+  const [currentWeek, setCurrentWeek] = useState<number>(MIN_WEEK);
+
+  // Handle week changes with bounds checking
+  const handleWeekChange = (newWeek: number) => {
+    const constrainedWeek = Math.max(MIN_WEEK, Math.min(MAX_WEEK, newWeek));
+    setCurrentWeek(constrainedWeek);
+  };
 
   return (
     <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
@@ -16,7 +25,7 @@ const CalendarManager: React.FC = () => {
 
         <DragDropCalendar 
           week={currentWeek}
-          onWeekChange={setCurrentWeek}
+          onWeekChange={handleWeekChange}
         />
       </div>
     </div>

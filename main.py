@@ -14,6 +14,63 @@ import hashlib
 import secrets
 import jwt
 from enum import Enum as PyEnum
+import calendar
+
+# Month-based week utility functions
+def get_first_monday_of_month(year: int, month: int) -> datetime:
+    """Get the first Monday of a given month"""
+    first_day = datetime(year, month, 1)
+    days_ahead = 0 - first_day.weekday()  # Monday is 0
+    if days_ahead <= 0:  # Target day already happened this week
+        days_ahead += 7
+    return first_day + timedelta(days=days_ahead)
+
+def get_weeks_for_month(year: int, month: int) -> List[Tuple[int, datetime, datetime]]:
+    """Get all weeks for a given month, each starting on Monday"""
+    weeks = []
+    first_monday = get_first_monday_of_month(year, month)
+    
+    week_num = 1
+    current_monday = first_monday
+    
+    while current_monday.month == month or (current_monday.month == month % 12 + 1 and current_monday.day <= 7):
+        week_end = current_monday + timedelta(days=6)  # Sunday
+        weeks.append((week_num, current_monday, week_end))
+        
+        current_monday += timedelta(days=7)
+        week_num += 1
+        
+        # Stop if we've gone too far into the next month
+        if current_monday.month != month and current_monday.day > 7:
+            break
+    
+    return weeks
+
+def get_week_display_name(year: int, month: int, week_number: int) -> str:
+    """Generate display name like 'Week 1 (Sep 2-8)'"""
+    month_name = calendar.month_abbr[month]
+    weeks = get_weeks_for_month(year, month)
+    
+    if week_number <= len(weeks):
+        _, start_date, end_date = weeks[week_number - 1]
+        return f"Week {week_number} ({month_name} {start_date.day}-{end_date.day})"
+    
+    return f"Week {week_number}"
+
+def get_current_month_week() -> Tuple[int, int, int]:
+    """Get current year, month, and week number"""
+    now = datetime.now()
+    year = now.year
+    month = now.month
+    
+    # Find which week of the month we're in
+    weeks = get_weeks_for_month(year, month)
+    for week_num, start_date, end_date in weeks:
+        if start_date <= now <= end_date:
+            return year, month, week_num
+    
+    # Fallback to first week
+    return year, month, 1
 
 # Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/schedule_test.db")
@@ -40,9 +97,13 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+connect_args = {}
+if DATABASE_URL.startswith("sqlite"):
+    connect_args["check_same_thread"] = False
+
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False}
+    connect_args=connect_args
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -90,6 +151,11 @@ class Lesson(Base):
     start_time = Column(String)
     end_time = Column(String)
     room = Column(String)
+    # Month-based week fields
+    month_week_id = Column(Integer)
+    month = Column(Integer)
+    year = Column(Integer)
+    week_number = Column(Integer)
 
 class User(Base):
     __tablename__ = "user"
@@ -115,6 +181,11 @@ class LessonOut(BaseModel):
     room: Optional[str] = None
     co_teachers: Optional[List[str]] = None
     duration_minutes: int  # Added for convenience
+    # Month-based week fields
+    month: Optional[int] = None
+    year: Optional[int] = None
+    week_number: Optional[int] = None
+    month_week_display: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -214,6 +285,10 @@ class LessonCreate(BaseModel):
     start_time: str
     end_time: str
     room: Optional[str] = None
+    # Month-based week fields
+    month: Optional[int] = None
+    year: Optional[int] = None
+    week_number: Optional[int] = None
 
 class LessonUpdate(BaseModel):
     teacher_id: Optional[int] = None
@@ -223,6 +298,10 @@ class LessonUpdate(BaseModel):
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     room: Optional[str] = None
+    # Month-based week fields
+    month: Optional[int] = None
+    year: Optional[int] = None
+    week_number: Optional[int] = None
 
 class ConflictCheck(BaseModel):
     conflicts: List[str]
@@ -319,22 +398,51 @@ def get_calendar_anchor(db: Session = Depends(get_db)) -> AnchorOut:
     """Return the earliest week present in lessons as anchor Monday.
     If no data, default to today's Monday.
     """
-    # Find minimal week number in DB
-    try:
-        row = db.execute(text("SELECT MIN(week) AS min_week FROM lesson")).fetchone()
-        min_week = int(row.min_week) if row and row.min_week is not None else None  # type: ignore[attr-defined]
-    except Exception:
-        min_week = None
+    anchor_candidate: Optional[datetime] = None
 
-    # Base monday chosen as the monday of current week
-    today = datetime.now()
-    monday = today - timedelta(days=today.weekday())
-    # If weeks exist, compute anchor as monday - (min_week-1)*7 days
-    if min_week is None or min_week < 1:
-        anchor = monday
-    else:
-        anchor = monday - timedelta(days=(min_week - 1) * 7)
-    anchor = anchor.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Prefer month-based week metadata when available to derive a stable anchor
+    try:
+        row = (
+            db.execute(
+                text(
+                    """
+                    SELECT year, month, week_number
+                    FROM lesson
+                    WHERE year IS NOT NULL AND month IS NOT NULL AND week_number IS NOT NULL
+                    ORDER BY year ASC, month ASC, week_number ASC
+                    LIMIT 1
+                    """
+                )
+            )
+            .mappings()
+            .first()
+        )
+        if row:
+            year = int(row["year"])
+            month = int(row["month"])
+            anchor_candidate = datetime(year, month, 1)
+            # Align to the Monday of the first teaching week for that month
+            while anchor_candidate.weekday() != 0:
+                anchor_candidate += timedelta(days=1)
+    except Exception:
+        anchor_candidate = None
+
+    if anchor_candidate is None:
+        # Fallback to legacy week-based estimation
+        try:
+            row = db.execute(text("SELECT MIN(week) AS min_week FROM lesson")).fetchone()
+            min_week = int(row.min_week) if row and row.min_week is not None else None  # type: ignore[attr-defined]
+        except Exception:
+            min_week = None
+
+        today = datetime.now()
+        monday = today - timedelta(days=today.weekday())
+        if min_week is None or min_week < 1:
+            anchor_candidate = monday
+        else:
+            anchor_candidate = monday - timedelta(days=(min_week - 1) * 7)
+
+    anchor = anchor_candidate.replace(hour=0, minute=0, second=0, microsecond=0)
     return AnchorOut(anchor_date=anchor.strftime("%Y-%m-%d"))
 
 # Remove duplicate lifespan definition
@@ -536,6 +644,8 @@ def _build_lessons_from_rows(
     items: List[LessonOut] = []
     norm_exclude = exclude_teacher.strip().casefold() if exclude_teacher else None
     for lesson, cls, teacher in rows:
+        if lesson is None or cls is None or teacher is None:
+            continue
         key = (cls.class_id, lesson.week, lesson.day, lesson.start_time, lesson.end_time)
         co_list = None
         if co_map is not None and key in co_map:
@@ -750,7 +860,12 @@ def create_lesson(
         day=lesson_data.day,
         start_time=lesson_data.start_time,
         end_time=lesson_data.end_time,
-        room=lesson_data.room
+        room=lesson_data.room,
+        # Month-based week fields
+        month=lesson_data.month,
+        year=lesson_data.year,
+        week_number=lesson_data.week_number,
+        month_week_id=lesson_data.week_number  # Simple mapping for now
     )
     
     db.add(new_lesson)
@@ -770,6 +885,12 @@ def create_lesson(
         raise HTTPException(500, "Failed to retrieve created lesson")
     
     lesson, cls, teacher = lesson_with_details
+    
+    # Generate month_week_display if month-based week fields are available
+    month_week_display = None
+    if lesson.month and lesson.year and lesson.week_number:
+        month_week_display = get_week_display_name(lesson.year, lesson.month, lesson.week_number)
+    
     return LessonOut(
         id=lesson.id,
         week=lesson.week,
@@ -780,7 +901,12 @@ def create_lesson(
         teacher_name=teacher.name,
         campus_name=cls.campus_name,
         room=lesson.room,
-        duration_minutes=30  # Default to 30 minutes
+        duration_minutes=30,  # Default to 30 minutes
+        # Month-based week fields
+        month=lesson.month,
+        year=lesson.year,
+        week_number=lesson.week_number,
+        month_week_display=month_week_display
     )
 
 @app.get("/lessons/{lesson_id}", response_model=LessonOut)
@@ -802,6 +928,12 @@ def get_lesson(
         raise HTTPException(404, "Lesson not found")
     
     lesson, cls, teacher = lesson_with_details
+    
+    # Generate month_week_display if month-based week fields are available
+    month_week_display = None
+    if lesson.month and lesson.year and lesson.week_number:
+        month_week_display = get_week_display_name(lesson.year, lesson.month, lesson.week_number)
+    
     return LessonOut(
         id=lesson.id,
         week=lesson.week,
@@ -812,7 +944,12 @@ def get_lesson(
         teacher_name=teacher.name,
         campus_name=cls.campus_name,
         room=lesson.room,
-        duration_minutes=30
+        duration_minutes=30,
+        # Month-based week fields
+        month=lesson.month,
+        year=lesson.year,
+        week_number=lesson.week_number,
+        month_week_display=month_week_display
     )
 
 @app.put("/lessons/{lesson_id}", response_model=LessonOut)
@@ -901,6 +1038,40 @@ def delete_lesson(
     db.commit()
     return {"message": "Lesson deleted successfully"}
 
+@app.get("/weeks/{year}/{month}")
+def get_weeks_for_month_endpoint(
+    year: int,
+    month: int,
+    current_user: User = Depends(require_any_role)
+):
+    """Get available weeks for a specific month"""
+    try:
+        weeks = get_weeks_for_month(year, month)
+        return [
+            {
+                "week_number": week_num,
+                "start_date": start_date.strftime("%Y-%m-%d"),
+                "end_date": end_date.strftime("%Y-%m-%d"),
+                "display_name": get_week_display_name(year, month, week_num)
+            }
+            for week_num, start_date, end_date in weeks
+        ]
+    except Exception as e:
+        raise HTTPException(400, f"Invalid month/year: {e}")
+
+@app.get("/current-month-week")
+def get_current_month_week_endpoint(
+    current_user: User = Depends(require_any_role)
+):
+    """Get current month and week"""
+    year, month, week_number = get_current_month_week()
+    return {
+        "year": year,
+        "month": month,
+        "week_number": week_number,
+        "display_name": get_week_display_name(year, month, week_number)
+    }
+
 @app.get("/lessons", response_model=List[LessonOut])
 def list_lessons(
     week: Optional[int] = None,
@@ -908,6 +1079,10 @@ def list_lessons(
     teacher_id: Optional[int] = None,
     class_id: Optional[int] = None,
     room: Optional[str] = None,
+    # New month-based week parameters
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    week_number: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_any_role)
 ):
@@ -918,8 +1093,16 @@ def list_lessons(
         .join(Teacher, Lesson.teacher_id == Teacher.teacher_id)
     )
     
-    if week is not None:
+    # Prioritize month-based week filtering over legacy week filtering
+    if month is not None and year is not None and week_number is not None:
+        query = query.filter(
+            Lesson.month == month,
+            Lesson.year == year,
+            Lesson.week_number == week_number
+        )
+    elif week is not None:
         query = query.filter(Lesson.week == week)
+    
     if day is not None:
         query = query.filter(Lesson.day == day)
     if teacher_id is not None:
@@ -938,6 +1121,11 @@ def list_lessons(
             logger.warning(f"Skipping lesson due to None object: lesson={lesson}, cls={cls}, teacher={teacher}")
             continue
             
+        # Generate month_week_display if month-based week fields are available
+        month_week_display = None
+        if lesson.month and lesson.year and lesson.week_number:
+            month_week_display = get_week_display_name(lesson.year, lesson.month, lesson.week_number)
+        
         result.append(LessonOut(
             id=lesson.id,
             week=lesson.week,
@@ -948,10 +1136,61 @@ def list_lessons(
             teacher_name=teacher.name,
             campus_name=cls.campus_name,
             room=lesson.room,
-            duration_minutes=30
+            duration_minutes=30,
+            # Month-based week fields
+            month=lesson.month,
+            year=lesson.year,
+            week_number=lesson.week_number,
+            month_week_display=month_week_display
         ))
     
     return result
+
+def _get_schedule_rows(
+    db: Session,
+    teacher_id: Optional[int] = None,
+    class_id: Optional[int] = None,
+    week: Optional[int] = None,
+    day: Optional[str] = None,
+    campus: Optional[str] = None,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    week_number: Optional[int] = None
+) -> List[Tuple[Lesson, ClassModel, Teacher]]:
+    """Get schedule rows based on filters"""
+    query = (
+        db.query(Lesson, ClassModel, Teacher)
+        .join(ClassModel, Lesson.class_id == ClassModel.class_id)
+        .join(Teacher, Lesson.teacher_id == Teacher.teacher_id)
+    )
+    
+    # Filter by teacher
+    if teacher_id is not None:
+        query = query.filter(Lesson.teacher_id == teacher_id)
+    
+    # Filter by class
+    if class_id is not None:
+        query = query.filter(Lesson.class_id == class_id)
+    
+    # Filter by campus
+    if campus is not None:
+        query = query.filter(ClassModel.campus_name == campus)
+    
+    # Prioritize month-based week filtering over legacy week filtering
+    if month is not None and year is not None and week_number is not None:
+        query = query.filter(
+            Lesson.month == month,
+            Lesson.year == year,
+            Lesson.week_number == week_number
+        )
+    elif week is not None:
+        query = query.filter(Lesson.week == week)
+    
+    # Filter by day
+    if day is not None:
+        query = query.filter(Lesson.day == day)
+    
+    return query.order_by(Lesson.week, Lesson.day, Lesson.start_time).all()
 
 @app.get("/my/{teacher_id}", response_model=List[LessonOut])
 def get_teacher_schedule(
@@ -960,6 +1199,10 @@ def get_teacher_schedule(
     day: Optional[str] = None,
     campus: Optional[str] = None,
     grouped: bool = False,
+    # New month-based week parameters
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    week_number: Optional[int] = None,
     db: Session = Depends(get_db)
 ) -> List[LessonOut]:
     """Get schedule for a specific teacher"""
@@ -968,7 +1211,7 @@ def get_teacher_schedule(
     if not teacher_exists:
         raise HTTPException(404, f"Teacher with id {teacher_id} not found")
     
-    rows = _get_schedule_rows(db, teacher_id=teacher_id, week=week, day=day, campus=campus)
+    rows = _get_schedule_rows(db, teacher_id=teacher_id, week=week, day=day, campus=campus, month=month, year=year, week_number=week_number)
     
     # If no rows, return an empty list (better UX for frontend)
     if not rows:
@@ -979,6 +1222,7 @@ def get_teacher_schedule(
     keys: List[Tuple[int, int, str, str, str]] = [
         (cls.class_id, lesson.week, lesson.day, lesson.start_time, lesson.end_time)
         for lesson, cls, _ in rows
+        if lesson is not None and cls is not None
     ]
     if keys:
         class_ids = {k[0] for k in keys}
@@ -1004,6 +1248,8 @@ def get_teacher_schedule(
         # fall back to include same-type to avoid missing names due to data inconsistencies.
         selected_is_foreign = bool(teacher_exists.is_foreign)
         for l, c, t in others:
+            if l is None or c is None or t is None:
+                continue
             k = (c.class_id, l.week, l.day, l.start_time, l.end_time)
             candidate_is_foreign = bool(getattr(t, 'is_foreign', False))
             if selected_is_foreign:
@@ -1017,6 +1263,8 @@ def get_teacher_schedule(
         if others:
             by_key_all: Dict[Tuple[int, int, str, str, str], List[str]] = {}
             for l, c, t in others:
+                if l is None or c is None or t is None:
+                    continue
                 k = (c.class_id, l.week, l.day, l.start_time, l.end_time)
                 by_key_all.setdefault(k, []).append(t.name)
             for k, all_names in by_key_all.items():
@@ -1073,27 +1321,6 @@ def get_class_schedule(
     
     return group_consecutive_lessons(unique_lessons) if grouped else unique_lessons
 
-def _get_schedule_rows(db: Session, teacher_id: Optional[int] = None, class_id: Optional[int] = None, 
-                      week: Optional[int] = None, day: Optional[str] = None, campus: Optional[str] = None):
-    """Common query logic for schedule endpoints"""
-    query = (
-        db.query(Lesson, ClassModel, Teacher)
-        .join(ClassModel, Lesson.class_id == ClassModel.class_id)
-        .join(Teacher, Lesson.teacher_id == Teacher.teacher_id)
-    )
-    
-    if teacher_id is not None:
-        query = query.filter(Lesson.teacher_id == teacher_id)
-    if class_id is not None:
-        query = query.filter(Lesson.class_id == class_id)
-    if week is not None:
-        query = query.filter(Lesson.week == week)
-    if day is not None:
-        query = query.filter(Lesson.day == day)
-    if campus is not None:
-        query = query.filter(ClassModel.campus_name == campus)
-    
-    return query.order_by(Lesson.week, Lesson.day, Lesson.start_time).all()
 
 # Teacher Management Endpoints
 @app.get("/teachers", response_model=List[TeacherOut])

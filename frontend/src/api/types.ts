@@ -1,6 +1,6 @@
 export type LessonOut = {
   id?: number; // Add lesson ID for CRUD operations
-  week: number;
+  week?: number; // Keep for backward compatibility
   day: string;
   start_time: string;
   end_time: string;
@@ -10,6 +10,15 @@ export type LessonOut = {
   room?: string | null;
   co_teachers?: string[] | null;
   duration_minutes: number;
+  // Additional fields for editing
+  teacher_id?: number;
+  class_id?: number;
+  notes?: string;
+  // New month-based week fields
+  month?: number;
+  year?: number;
+  week_number?: number;
+  month_week_display?: string; // "Week 1 (Jan 2-8)"
 };
 
 export type Teacher = {
@@ -81,6 +90,62 @@ export type LessonUpdate = {
 export type ConflictCheck = {
   conflicts: string[];
   can_create: boolean;
+  teacher_conflict?: boolean;
+  room_conflict?: boolean;
+};
+
+// Bulk operation types
+export type BulkCopyRequest = {
+  lesson_ids: number[];
+  target_week: number;
+};
+
+export type BulkMoveRequest = {
+  lesson_ids: number[];
+  target_day: string;
+};
+
+export type BulkAssignRequest = {
+  lesson_ids: number[];
+  teacher_id: number;
+};
+
+export type BulkDeleteRequest = {
+  lesson_ids: number[];
+};
+
+export type BulkOperationResponse = {
+  message: string;
+};
+
+// Month-based week types
+export type MonthWeek = {
+  week_number: number;
+  start_date: string;
+  end_date: string;
+  display_name: string;
+};
+
+export type CurrentMonthWeek = {
+  year: number;
+  month: number;
+  week_number: number;
+  display_name: string;
+};
+
+export type LessonCreate = {
+  teacher_id: number;
+  class_id: number;
+  week?: number; // Keep for backward compatibility
+  day: string;
+  start_time: string;
+  end_time: string;
+  room?: string;
+  notes?: string;
+  // New month-based week fields
+  month?: number;
+  year?: number;
+  week_number?: number;
 };
 
 // Teacher Management Types
@@ -133,11 +198,75 @@ export type ClassOut = {
   class_id: number;
   code_new?: string;
   code_old?: string;
+  name: string;
   campus_name: string;
   level?: string;
   capacity?: number;
   is_active: boolean;
   lesson_count: number;
+};
+
+// Schedule Filter Types
+export type ScheduleFilter = {
+  week?: number;
+  day?: string;
+  campus?: string;
+  grouped?: boolean;
+  // Month-based week parameters
+  month?: number;
+  year?: number;
+  week_number?: number;
+};
+
+// Month-based Week Types
+export type MonthWeek = {
+  week_number: number;
+  start_date: string;
+  end_date: string;
+  display_name: string;
+};
+
+export type CurrentMonthWeek = {
+  year: number;
+  month: number;
+  week_number: number;
+  display_name: string;
+};
+
+// Bulk Operations Types
+export type BulkCopyRequest = {
+  lesson_ids: number[];
+  target_week: number;
+  target_day?: string;
+};
+
+export type BulkMoveRequest = {
+  lesson_ids: number[];
+  target_week: number;
+  target_day?: string;
+};
+
+export type BulkAssignRequest = {
+  lesson_ids: number[];
+  teacher_id: number;
+};
+
+export type BulkDeleteRequest = {
+  lesson_ids: number[];
+};
+
+export type BulkOperationResponse = {
+  success: boolean;
+  message: string;
+  affected_lessons: number;
+};
+
+// Conflict Check Types
+export type ConflictCheck = {
+  conflicts: string[];
+  can_create: boolean;
+  teacher_conflict?: boolean;
+  room_conflict?: boolean;
 };
 
 

@@ -101,7 +101,15 @@ import type {
   TeacherOut,
   ClassCreate,
   ClassUpdate,
-  ClassOut
+  ClassOut,
+  BulkCopyRequest,
+  BulkMoveRequest,
+  BulkAssignRequest,
+  BulkDeleteRequest,
+  BulkOperationResponse,
+  MonthWeek,
+  CurrentMonthWeek,
+  ScheduleFilter
 } from './types';
 
 export const api = {
@@ -113,6 +121,16 @@ export const api = {
     fetchJson<LessonOut[]>(`/my/${teacherId}${toQuery(filter)}`),
   getClassSchedule: (classId: number, filter: ScheduleFilter = {}) =>
     fetchJson<LessonOut[]>(`/class/${classId}${toQuery(filter)}`),
+  
+  // Month-based week endpoints
+  getWeeksForMonth: (year: number, month: number) =>
+    fetchJson<MonthWeek[]>(`/weeks/${year}/${month}`),
+  getCurrentMonthWeek: () =>
+    fetchJson<CurrentMonthWeek>('/current-month-week'),
+  
+  // Lesson Management
+  listLessons: (filters: ScheduleFilter = {}) =>
+    fetchJson<LessonOut[]>(`/lessons${toQuery(filters)}`),
 
   // Authentication endpoints
   login: async (credentials: UserLogin): Promise<Token> => {
@@ -175,14 +193,6 @@ export const api = {
       method: 'DELETE',
     }),
   
-  listLessons: (filters: {
-    week?: number;
-    day?: string;
-    teacher_id?: number;
-    class_id?: number;
-    room?: string;
-  } = {}) =>
-    fetchJson<LessonOut[]>(`/lessons${toQuery(filters)}`),
 
   // Teacher Management
   listTeachersDetailed: (filters: {
@@ -238,6 +248,29 @@ export const api = {
     fetchJson<{message: string}>(`/classes/${classId}${toQuery({force})}`, {
       method: 'DELETE',
     }),
+
+  // Bulk Operations
+  bulkCopyLessons: (request: BulkCopyRequest) =>
+    fetchJson<BulkOperationResponse>('/lessons/bulk/copy', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
+  bulkMoveLessons: (request: BulkMoveRequest) =>
+    fetchJson<BulkOperationResponse>('/lessons/bulk/move', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
+  bulkAssignTeacher: (request: BulkAssignRequest) =>
+    fetchJson<BulkOperationResponse>('/lessons/bulk/assign', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
+  bulkDeleteLessons: (request: BulkDeleteRequest) =>
+    fetchJson<BulkOperationResponse>('/lessons/bulk/delete', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
+
 };
 
 // Auth utilities

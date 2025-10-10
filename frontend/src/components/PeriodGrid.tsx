@@ -2,6 +2,7 @@ import React from "react";
 import type { LessonOut } from "@/api/types";
 import { toMinutes, getGridPlacement, SLOT_MIN, formatTime } from "@/lib/layout";
 import { format } from "date-fns";
+import { PlusIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/24/solid";
 
 type PeriodGridProps = {
   weekStartISO: string; // Monday 00:00 of the shown week
@@ -10,6 +11,10 @@ type PeriodGridProps = {
   dayEnd: string; // e.g., "21:00"
   periodMinutes?: number; // default 30
   selectedDay?: number; // 0 = Monday, 1 = Tuesday, etc.
+  isEditMode?: boolean;
+  onSlotClick?: (day: string, time: string) => void;
+  onLessonEdit?: (lesson: LessonOut) => void;
+  onLessonDelete?: (lesson: LessonOut) => void;
 };
 
 const DAYS: Array<"Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun"> = [
@@ -39,6 +44,10 @@ export default function PeriodGrid({
   dayEnd,
   periodMinutes = SLOT_MIN,
   selectedDay = 0,
+  isEditMode = false,
+  onSlotClick,
+  onLessonEdit,
+  onLessonDelete,
 }: PeriodGridProps) {
   // 1) Build the period rows
   const startMin = toMinutes(dayStart);
@@ -86,7 +95,7 @@ export default function PeriodGrid({
         </div>
 
         {/* Day columns */}
-        {DAYS.map((_, d) => {
+        {DAYS.map((dayCode, d) => {
           const dayLessons = byDay[d].sort((a, b) => toMinutes(a.start_time) - toMinutes(b.start_time));
           
           // Check if this is today
@@ -143,7 +152,7 @@ export default function PeriodGrid({
           return (
             <div
               key={d}
-              className={`relative col-start-[auto] row-start-2 row-span-full border-r border-gray-200 transition-colors ${
+              className={`relative col-start-[auto] row-start-2 row-span-full border-r border-gray-200 transition-colors group ${
                 isToday 
                   ? 'bg-brand-orange/5' 
                   : isWeekend 
@@ -157,6 +166,44 @@ export default function PeriodGrid({
               
               {/* foreground overlay with hour/half-hour lines */}
               <TimeOverlay periodCount={periodCount} periodMinutes={periodMinutes} />
+
+              {/* slot action overlays for edit mode */}
+              {isEditMode && onSlotClick && (
+                <div className="absolute inset-0 pointer-events-none">
+                  {Array.from({ length: periodCount }).map((_, slotIndex) => {
+                    const slotMinutes = startMin + slotIndex * periodMinutes;
+                    const slotTime = formatTime(slotMinutes);
+                    const topPosition = slotIndex * 80 + 40; // center of slot (80px height)
+                    const isOccupied = lessonsWithLaneAssignment.some((lesson) => {
+                      const lessonStartSlot = lesson.rowStart - 1;
+                      const lessonEndSlot = lessonStartSlot + lesson.rowSpan;
+                      return slotIndex >= lessonStartSlot && slotIndex < lessonEndSlot;
+                    });
+
+                    if (isOccupied) {
+                      return null;
+                    }
+
+                    return (
+                      <button
+                        key={`${DAYS[d]}-${slotIndex}`}
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onSlotClick(dayCode, slotTime);
+                        }}
+                        className="pointer-events-auto absolute left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-90 focus:opacity-100 transition-opacity"
+                        style={{ top: `${topPosition}px` }}
+                        title={`Add lesson at ${slotTime}`}
+                      >
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2">
+                          <PlusIcon className="h-4 w-4" />
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* lessons with proper lane assignment */}
               {lessonsWithLaneAssignment.map((lesson) => {
@@ -176,7 +223,12 @@ export default function PeriodGrid({
                       top: `${(lesson.rowStart - 1) * 80 + 4}px`,
                     }}
                   >
-                    <LessonCell lesson={lesson} />
+                    <LessonCell
+                      lesson={lesson}
+                      isEditMode={isEditMode}
+                      onEdit={onLessonEdit ? () => onLessonEdit(lesson) : undefined}
+                      onDelete={onLessonDelete ? () => onLessonDelete(lesson) : undefined}
+                    />
                   </div>
                 );
               })}
@@ -254,7 +306,17 @@ function TimeOverlay({ periodCount, periodMinutes }: { periodCount: number; peri
   );
 }
 
-function LessonCell({ lesson }: { lesson: LessonOut }) {
+function LessonCell({
+  lesson,
+  isEditMode,
+  onEdit,
+  onDelete,
+}: {
+  lesson: LessonOut;
+  isEditMode?: boolean;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}) {
   const campus = lesson.campus_name ?? (lesson as any).campus;
   const coTeachers = Array.isArray(lesson.co_teachers) ? lesson.co_teachers.join(" • ") : (lesson as any).viet_teacher;
   
@@ -267,10 +329,36 @@ function LessonCell({ lesson }: { lesson: LessonOut }) {
   
   return (
     <div className="h-full w-full bg-white border border-gray-200 rounded-lg shadow-sm p-2 flex flex-col gap-1 hover:shadow-md transition-all duration-200 m-1 relative">
-      {/* Duration - top right */}
-      <div className="absolute top-2 right-2 text-[10px] text-gray-400 font-medium">
-        {lesson.duration_minutes}m
-      </div>
+      {isEditMode && (onEdit || onDelete) && (
+        <div className="absolute top-1 right-1 flex items-center gap-1 z-20">
+          {onEdit && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit();
+              }}
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-orange-600 shadow ring-1 ring-orange-200 hover:bg-orange-50 hover:text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500"
+              title="Edit lesson"
+            >
+              <PencilSquareIcon className="h-4 w-4" />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete();
+              }}
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-red-600 shadow ring-1 ring-red-200 hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+              title="Delete lesson"
+            >
+              <TrashIcon className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      )}
       
       {/* Campus/Event indicator */}
       <div className="flex items-center gap-1 pr-8">
@@ -287,21 +375,21 @@ function LessonCell({ lesson }: { lesson: LessonOut }) {
       </div>
       
       {/* Time range */}
-          <div className="text-sm text-gray-900 tabular-nums font-semibold">
-            {lesson.start_time} — {lesson.end_time}
-          </div>
+      <div className="text-sm text-gray-900 tabular-nums font-semibold">
+        {lesson.start_time} — {lesson.end_time}
+      </div>
 
-          {/* Class + primary teacher */}
-          <div className="text-[15px] font-semibold text-gray-900 truncate">
-            {lesson.class_code}
-          </div>
+      {/* Class + primary teacher */}
+      <div className="text-[15px] font-semibold text-gray-900 truncate">
+        {lesson.class_code}
+      </div>
 
-          {/* Co-teachers (VN) */}
-          {coTeachers && (
-            <div className="text-xs text-gray-600 truncate" title={coTeachers}>
-              VN: {coTeachers}
-            </div>
-          )}
+      {/* Co-teachers (VN) */}
+      {coTeachers && (
+        <div className="text-xs text-gray-600 truncate" title={coTeachers}>
+          VN: {coTeachers}
+        </div>
+      )}
     </div>
   );
 }

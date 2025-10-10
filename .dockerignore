@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+
+# Local data
+# Keep sample database during local development; mount volumes in production
+# data/
+
+# Node modules and build artifacts
+frontend/node_modules/
+frontend/dist/
+
+# Git
+.git
+.gitignore
+
+# Docker
+.dockerignore
+docker-compose.yml
+Dockerfile.frontend
+README.md
+render.yaml
+QWEN.md
+
+

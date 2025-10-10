@@ -1,0 +1,56 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: ehome-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ehome}
+      POSTGRES_USER: ${POSTGRES_USER:-ehome}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ehome}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ehome-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ehome-backend
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://${POSTGRES_USER:-ehome}:${POSTGRES_PASSWORD:-ehome}@db:5432/${POSTGRES_DB:-ehome}}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+      CORS_EXTRA_ORIGINS: ${CORS_EXTRA_ORIGINS:-}
+    ports:
+      - "8000:8000"
+    networks:
+      - ehome-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ehome-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "80:80"
+    networks:
+      - ehome-network
+
+volumes:
+  postgres_data:
+
+networks:
+  ehome-network:
+    driver: bridge
+

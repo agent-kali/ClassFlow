@@ -32,9 +32,16 @@ export const getAcademicAnchor = (): Date => {
 export const getWeekStart = (week: number): Date => {
   const anchor = getAcademicAnchor();
   const start = new Date(anchor);
-  start.setDate(anchor.getDate() + (Math.max(1, week) - 1) * 7);
+  start.setDate(anchor.getDate() + (week - 1) * 7);
   start.setHours(0, 0, 0, 0);
   return start;
+};
+
+export const getWeekNumber = (date: Date): number => {
+  const anchor = getAcademicAnchor();
+  const diffTime = date.getTime() - anchor.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  return Math.floor(diffDays / 7) + 1;
 };
 
 

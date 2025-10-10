@@ -216,4 +216,48 @@ Open http://localhost:5173 to access the teacher timeline interface.
 
 MIT (or your preferred license)
 
+## Docker Deployment
+
+Set required environment variables by creating a `.env` file in the project root:
+
+```
+DATABASE_URL=postgresql+psycopg2://ehome:ehome@db:5432/ehome
+JWT_SECRET_KEY=change-me
+ACCESS_TOKEN_EXPIRE_MINUTES=1440
+CORS_EXTRA_ORIGINS=
+POSTGRES_DB=ehome
+POSTGRES_USER=ehome
+POSTGRES_PASSWORD=ehome
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+> Change `JWT_SECRET_KEY` and database credentials before production.
+
+Then build and run the stack:
+
+```bash
+docker compose up --build
+```
+
+- Backend: http://localhost:8000 (FastAPI docs at `/docs`)
+- Frontend: http://localhost (served via Nginx)
+- Database data persists in the `postgres_data` volume. To reset:
+
+```bash
+docker compose down -v
+```
+
+### Deploy to a VPS
+
+1. Provision a Linux VPS (Ubuntu 22.04+ recommended).
+2. Install Docker Engine and the Compose plugin:
+   ```bash
+   curl -fsSL https://get.docker.com | sh
+   sudo apt install docker-compose-plugin
+   ```
+3. Clone the repository and copy your `.env` file.
+4. Run `docker compose up -d`.
+5. Configure a reverse proxy + HTTPS (Caddy, Traefik, or Nginx + Certbot).
+6. Set up automated backups for the Postgres volume (e.g., `docker exec pg_dump`).
+
 

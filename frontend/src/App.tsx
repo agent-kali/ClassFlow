@@ -11,6 +11,7 @@ import TeacherTimeline from './components/TeacherTimeline';
 
 // Views
 import WeekView from './views/WeekView';
+import MonthView from './views/MonthView';
 import AdminPanel from './views/AdminPanel';
 import ScheduleManager from './views/ScheduleManager';
 import CalendarManager from './views/CalendarManager';
@@ -63,6 +64,7 @@ const AppContent: React.FC = () => {
         <Routes>
           <Route path="/" element={<TeacherTimeline />} />
           <Route path="/week" element={<WeekView />} />
+          <Route path="/month" element={<MonthView />} />
           
           <Route 
             path="/manage" 

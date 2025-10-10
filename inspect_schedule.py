@@ -7,6 +7,50 @@ import logging
 from typing import Dict, Set, List, Tuple, Optional
 import argparse
 
+# Month-based week utilities
+def get_first_monday_of_month(year: int, month: int) -> datetime.datetime:
+    """Get the first Monday of a month (or the 1st if it's already Monday)"""
+    first_day = datetime.datetime(year, month, 1)
+    day_of_week = first_day.weekday()  # 0 = Monday, 6 = Sunday
+    
+    if day_of_week == 6:  # Sunday
+        return datetime.datetime(year, month, 2)
+    elif day_of_week == 0:  # Monday
+        return datetime.datetime(year, month, 1)
+    else:
+        days_until_monday = 7 - day_of_week
+        return datetime.datetime(year, month, 1 + days_until_monday)
+
+def get_week_for_date(date: datetime.datetime) -> Optional[Tuple[int, int, int]]:
+    """Find which week a specific date belongs to: (year, month, week_number)"""
+    year = date.year
+    month = date.month
+    first_monday = get_first_monday_of_month(year, month)
+    
+    current_week_start = first_monday
+    week_number = 1
+    
+    while current_week_start.month == month:
+        week_end = current_week_start + datetime.timedelta(days=6)
+        
+        if current_week_start <= date <= week_end:
+            return (year, month, week_number)
+        
+        current_week_start += datetime.timedelta(days=7)
+        week_number += 1
+    
+    return None
+
+def academic_week_to_month_week(week_num: int, anchor_date: str = "2025-09-01") -> Optional[Tuple[int, int, int]]:
+    """Convert academic week number to month-based week: (year, month, week_number)"""
+    try:
+        anchor = datetime.datetime.strptime(anchor_date, "%Y-%m-%d")
+        target_date = anchor + datetime.timedelta(weeks=week_num - 1)
+        return get_week_for_date(target_date)
+    except Exception as e:
+        logger.warning(f"Failed to convert academic week {week_num} to month week: {e}")
+        return None
+
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -16,6 +60,23 @@ DEFAULT_FILE_PATH = os.getenv("EHOME_SCHEDULE_FILE", 'data/Schedule.xlsx')
 DEFAULT_SHEETS_ENV = os.getenv("EHOME_SHEET_NAMES", "").strip()
 DAY_NAMES = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
 SLOT_DURATION = datetime.timedelta(minutes=30)
+
+# Map teacher name variants to a single canonical form to avoid duplicates
+# Example: "Mr Zac", "Mr Zak", and misspellings like "Mr Zakiria" → "Mr Zakaria"
+TEACHER_ALIAS_MAP = {
+    "mr zac": "Mr Zakaria",
+    "mr zak": "Mr Zakaria",
+    "mr zakaria": "Mr Zakaria",
+    "mr zakiria": "Mr Zakaria",
+    "mr zack": "Mr Zakaria",
+}
+
+def normalize_teacher(name: Optional[str]) -> Optional[str]:
+    if not name:
+        return name
+    s = str(name).strip()
+    key = re.sub(r"\s+", " ", s).lower()
+    return TEACHER_ALIAS_MAP.get(key, s)
 
 def read_excel_sheets(file_path: str, sheet_names: Optional[List[str]]) -> Dict[str, pd.DataFrame]:
     """Read Excel sheets safely. If sheet_names is None or empty, read all sheets."""
@@ -95,6 +156,14 @@ def build_tables(file_path: str, sheet_names: Optional[List[str]] = None):
         all_lessons_found = []
         processed_lesson_contents = set()  # Unique lessons by content
         
+        # Detect file format by checking header row
+        is_foreign_schedule = False
+        if df.shape[0] > 1:
+            header_row = df.iloc[1]
+            if pd.notna(header_row[4]) and 'CLASS CODE' in str(header_row[4]):
+                is_foreign_schedule = True
+                logger.info(f"Detected foreign schedule format in sheet: {sheet_name}")
+        
         # Build row_room_map to map row index to room number
         row_room_map = {}
         # Build row_teacher_map to map row index to teacher name
@@ -103,29 +172,51 @@ def build_tables(file_path: str, sheet_names: Optional[List[str]] = None):
         for i, row in df.iterrows():
             if i < 2:  # skip headers
                 continue
-                
-            # Extract room from R.NO column (column 3) - keep full format
-            if len(row) > 3 and pd.notna(row[3]):
-                room_str = str(row[3]).strip()
-                # Keep the full room format as it appears in Excel
-                # Convert "E1 - 202" to "E1-202" for consistency
-                if ' - ' in room_str:
-                    row_room_map[i] = room_str.replace(' - ', '-')
-                else:
-                    row_room_map[i] = room_str
-                    
-            # Extract teacher from TEACHER column (column 2)
-            if len(row) > 2 and pd.notna(row[2]):
-                teacher_str = str(row[2]).strip()
-                row_teacher_map[i] = teacher_str
+            
+            if is_foreign_schedule:
+                # Foreign schedule format: class_code=column 4, teacher=column 5, room=column 6
+                # Extract room from column 6
+                if len(row) > 6 and pd.notna(row[6]):
+                    room_str = str(row[6]).strip()
+                    # Convert "E1 - G1" to "E1-G1" for consistency
+                    if ' - ' in room_str:
+                        row_room_map[i] = room_str.replace(' - ', '-')
+                    else:
+                        row_room_map[i] = room_str
+                        
+                # Extract teacher from column 5
+                if len(row) > 5 and pd.notna(row[5]):
+                    teacher_str = str(row[5]).strip()
+                    row_teacher_map[i] = normalize_teacher(teacher_str)
+            else:
+                # Original format: room=column 3, teacher=column 2
+                # Extract room from R.NO column (column 3) - keep full format
+                if len(row) > 3 and pd.notna(row[3]):
+                    room_str = str(row[3]).strip()
+                    # Keep the full room format as it appears in Excel
+                    # Convert "E1 - 202" to "E1-202" for consistency
+                    if ' - ' in room_str:
+                        row_room_map[i] = room_str.replace(' - ', '-')
+                    else:
+                        row_room_map[i] = room_str
+                        
+                # Extract teacher from TEACHER column (column 2)
+                if len(row) > 2 and pd.notna(row[2]):
+                    teacher_str = str(row[2]).strip()
+                    row_teacher_map[i] = normalize_teacher(teacher_str)
         
         for i, row in df.iterrows():
             if i < 2:  # skip headers
                 continue
             
-            # Class code is in column 1, unit/description is in column 4
-            class_code = row[1] if pd.notna(row[1]) else None
-            class_name = row[4] if pd.notna(row[4]) else None
+            if is_foreign_schedule:
+                # Foreign schedule format: class_code=column 4, unit/description=column 7
+                class_code = row[4] if len(row) > 4 and pd.notna(row[4]) else None
+                class_name = row[7] if len(row) > 7 and pd.notna(row[7]) else None
+            else:
+                # Original format: class_code=column 1, unit/description=column 4
+                class_code = row[1] if pd.notna(row[1]) else None
+                class_name = row[4] if pd.notna(row[4]) else None
             
             if class_code:
                 # Determine campus from class code if it starts with E1/E2
@@ -214,6 +305,8 @@ def build_tables(file_path: str, sheet_names: Optional[List[str]] = None):
                 
                 # Get primary teacher from row's Teacher column (column 6), fallback to cell content
                 primary_teacher = row_teacher_map.get(i) or teacher_from_cell
+                # Normalize cell-derived teacher alias variants
+                teacher_from_cell = normalize_teacher(teacher_from_cell) if teacher_from_cell else None
                 # Sanity check: only accept cell-derived teacher if it looks like a real teacher name
                 if teacher_from_cell and not ENGLISH_NAME_PATTERN.match(teacher_from_cell):
                     teacher_from_cell = None
@@ -321,15 +414,31 @@ def build_tables(file_path: str, sheet_names: Optional[List[str]] = None):
                         lesson_campus = "E2"
                     
                     # Create lesson for primary teacher
+                    # Convert academic week to month-based week
+                    month_week_info = academic_week_to_month_week(week)
+                    month_week_id = None
+                    month = None
+                    year = None
+                    week_number = None
+                    
+                    if month_week_info:
+                        year, month, week_number = month_week_info
+                        month_week_id = f"{year}-{month:02d}-{week_number}"
+                    
                     lessons.append({
                         "campus_name": lesson_campus,
                         "class_code": class_code,
                         "teacher_name": teacher,
-                        "week": week,
+                        "week": week,  # Keep for backward compatibility
                         "day": day,
                         "start_time": curr.strftime('%H:%M'),
                         "end_time":   nxt.strftime('%H:%M'),
                         "room": final_room,
+                        # New month-based week fields
+                        "month_week_id": month_week_id,
+                        "month": month,
+                        "year": year,
+                        "week_number": week_number
                     })
                     slot_keys.add(key)
                     
@@ -349,11 +458,16 @@ def build_tables(file_path: str, sheet_names: Optional[List[str]] = None):
                                 "campus_name": lesson_campus,
                                 "class_code": class_code,
                                 "teacher_name": teacher_from_cell,
-                                "week": week,
+                                "week": week,  # Keep for backward compatibility
                                 "day": day,
                                 "start_time": curr.strftime('%H:%M'),
                                 "end_time":   nxt.strftime('%H:%M'),
                                 "room": final_room,
+                                # New month-based week fields (reuse same values)
+                                "month_week_id": month_week_id,
+                                "month": month,
+                                "year": year,
+                                "week_number": week_number
                             })
                             slot_keys.add(coteach_key)
                 curr = nxt
@@ -375,7 +489,7 @@ def build_tables(file_path: str, sheet_names: Optional[List[str]] = None):
     classes_df = pd.DataFrame(classes, columns=["campus_name","code_old","code_new","name","unique_key"])
     classes_df = classes_df.drop_duplicates(subset=["unique_key"]).drop(columns=["unique_key"]).reset_index(drop=True)
 
-    lessons_df = pd.DataFrame(lessons, columns=["campus_name","class_code","teacher_name","week","day","start_time","end_time","room"])
+    lessons_df = pd.DataFrame(lessons, columns=["campus_name","class_code","teacher_name","week","day","start_time","end_time","room","month_week_id","month","year","week_number"])
 
     # Check final duplicates in lessons_df
     final_dups = lessons_df[lessons_df.duplicated(subset=["campus_name","class_code","teacher_name","week","day","start_time","end_time"], keep=False)]
@@ -456,7 +570,7 @@ def save_to_database(campuses_df: pd.DataFrame, teachers_df: pd.DataFrame,
         # Final data
         # carry forward optional room
         df_room = df.get("room") if "room" in df.columns else None
-        final = df[["class_id","teacher_id","week","day","start_time","end_time","room"]].dropna(subset=["class_id","teacher_id","week","day","start_time","end_time"]).reset_index(drop=True)
+        final = df[["class_id","teacher_id","week","day","start_time","end_time","room","month_week_id","month","year","week_number"]].dropna(subset=["class_id","teacher_id","week","day","start_time","end_time"]).reset_index(drop=True)
         
         # Last duplicate check
         final_duplicates = final[final.duplicated(subset=["class_id","teacher_id","week","day","start_time","end_time"], keep=False)]
