@@ -16,7 +16,7 @@ RUN apt-get update \
 COPY requirements.txt ./
 
 RUN pip install --upgrade pip \
-    && pip install --no-cache-dir psycopg2-binary==2.9.9 \
+    && pip install --no-cache-dir --only-binary=all psycopg2-binary==2.9.9 \
     && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
