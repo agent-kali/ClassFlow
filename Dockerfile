@@ -1,4 +1,4 @@
-FROM python:3.13-slim AS runtime
+FROM python:3.11-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -16,7 +16,6 @@ RUN apt-get update \
 COPY requirements.txt ./
 
 RUN pip install --upgrade pip \
-    && pip install --no-cache-dir --only-binary=all psycopg2-binary==2.9.9 \
     && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
