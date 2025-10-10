@@ -260,4 +260,43 @@ docker compose down -v
 5. Configure a reverse proxy + HTTPS (Caddy, Traefik, or Nginx + Certbot).
 6. Set up automated backups for the Postgres volume (e.g., `docker exec pg_dump`).
 
+## CI/CD Pipeline
+
+This repository includes a GitLab CI pipeline that:
+
+- Installs backend dependencies and runs tests on the `main` branch.
+- Deploys to the production VPS using `scripts/deploy_remote.sh`.
+
+### Required GitLab Variables
+
+Set the following variables in your project (Settings → CI/CD → Variables):
+
+- `DEPLOY_HOST`: Public IP or domain of the VPS.
+- `DEPLOY_USER`: SSH user (e.g., `root`).
+- `DEPLOY_PATH`: Absolute path to the project on the VPS (e.g., `/opt/e-home`).
+- `SSH_PRIVATE_KEY`: Private key with access to the VPS (Base64 encoded or plain text).
+- `PRODUCTION_DOMAIN` (optional): Domain for environment URL.
+
+### SSH Key Setup
+
+1. Generate a deploy key dedicated to CI: `ssh-keygen -t ed25519 -f ~/.ssh/ci-deploy-key -C "gitlab-ci"`.
+2. Add the public key to `~/.ssh/authorized_keys` on the VPS.
+3. Store the private key in GitLab as `SSH_PRIVATE_KEY` (ensure `Protect variable` and `Mask variable` are enabled).
+
+### Remote Deploy Script
+
+The pipeline runs `scripts/deploy_remote.sh` on the VPS, which:
+
+- Pulls and builds Docker images.
+- Restarts the stack via `docker compose up -d`.
+- Keeps the `.env` file on the server (ensure it exists at `DEPLOY_PATH`).
+
+To deploy manually:
+
+```bash
+ssh root@68.183.183.248
+cd /opt/e-home
+./scripts/deploy_remote.sh
+```
+
 
