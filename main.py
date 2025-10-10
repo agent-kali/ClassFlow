@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, text, DateTime, Enum, or_
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, text, DateTime, Enum, or_, inspect
 from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict, Tuple
@@ -450,47 +450,52 @@ def get_calendar_anchor(db: Session = Depends(get_db)) -> AnchorOut:
 def ensure_indexes() -> None:
     """Ensure database schema and indexes exist"""
     try:
-        # Create all tables
         Base.metadata.create_all(bind=engine)
-        
+
+        inspector = inspect(engine)
+        backend_name = inspector.engine.name
+
         with engine.connect() as conn:
-            # Ensure 'room' column exists (SQLite allows ADD COLUMN)
-            try:
-                res = conn.execute(text("PRAGMA table_info(lesson)")).fetchall()
-                has_room = any(
-                    getattr(r, "name", None) == "room" or 
-                    (isinstance(r, tuple) and len(r) > 1 and r[1] == "room") 
-                    for r in res
-                )
-                if not has_room:
-                    conn.execute(text("ALTER TABLE lesson ADD COLUMN room TEXT"))
-                    logger.info("Added room column to lesson table")
-            except Exception as e:
-                logger.warning(f"Could not check/add room column: {e}")
-            
-            # Create indexes
-            indexes = [
+            # Ensure room column exists (SQLite-specific approach; for PostgreSQL it's part of the model)
+            if backend_name == "sqlite":
+                try:
+                    res = conn.execute(text("PRAGMA table_info(lesson)")).fetchall()
+                    has_room = any(
+                        getattr(r, "name", None) == "room" or 
+                        (isinstance(r, tuple) and len(r) > 1 and r[1] == "room") 
+                        for r in res
+                    )
+                    if not has_room:
+                        conn.execute(text("ALTER TABLE lesson ADD COLUMN room TEXT"))
+                        logger.info("Added room column to lesson table")
+                except Exception as e:
+                    logger.warning(f"Could not check/add room column: {e}")
+
+            # Create indexes, respecting reserved keywords in PostgreSQL
+            lesson_indexes = [
                 "CREATE INDEX IF NOT EXISTS idx_lesson_teacher_week_day_time ON lesson(teacher_id, week, day, start_time, end_time)",
                 "CREATE INDEX IF NOT EXISTS idx_lesson_class_week_day_time ON lesson(class_id, week, day, start_time, end_time)",
                 "CREATE INDEX IF NOT EXISTS idx_lesson_room ON lesson(room)",
-                "CREATE UNIQUE INDEX IF NOT EXISTS uniq_lesson ON lesson(class_id, teacher_id, week, day, start_time, end_time)",
-                "CREATE INDEX IF NOT EXISTS idx_user_username ON user(username)",
-                "CREATE INDEX IF NOT EXISTS idx_user_email ON user(email)",
-                "CREATE INDEX IF NOT EXISTS idx_user_role ON user(role)"
+                "CREATE UNIQUE INDEX IF NOT EXISTS uniq_lesson ON lesson(class_id, teacher_id, week, day, start_time, end_time)"
             ]
-            
-            for idx_sql in indexes:
+
+            user_indexes = [
+                "CREATE INDEX IF NOT EXISTS idx_user_username ON \"user\"(username)",
+                "CREATE INDEX IF NOT EXISTS idx_user_email ON \"user\"(email)",
+                "CREATE INDEX IF NOT EXISTS idx_user_role ON \"user\"(role)"
+            ]
+
+            for idx_sql in lesson_indexes + user_indexes:
                 try:
                     conn.execute(text(idx_sql))
                 except Exception as e:
                     logger.warning(f"Could not create index: {e}")
-            
+
             conn.commit()
             logger.info("Database schema and indexes ensured")
-            
-        # Create default admin user if none exists
+
         _create_default_admin()
-            
+
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
 
