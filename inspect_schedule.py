@@ -610,6 +610,8 @@ def save_to_database(campuses_df: pd.DataFrame,
         if not final.empty:
             final["month_week_id"] = final["month_week_id"].apply(lambda v: None if pd.isna(v) else str(v))
             final.to_sql("lesson", connection, if_exists="append", index=True, index_label="id")
+        else:
+            logger.warning("No lessons to insert after processing; database tables truncated")
 
     logger.info(f"✓ Successfully imported {len(final)} lesson entries to database")
 
