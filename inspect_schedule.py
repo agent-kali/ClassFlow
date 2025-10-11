@@ -551,6 +551,10 @@ def save_to_database(campuses_df: pd.DataFrame,
         teachers_df.to_sql("teacher", connection, if_exists="append", index=False)
         classes_df.to_sql("class", connection, if_exists="append", index=False)
 
+        if not DATABASE_URL.startswith("sqlite"):
+            connection.execute(text("UPDATE teacher SET is_active = TRUE WHERE is_active IS NULL"))
+            connection.execute(text("UPDATE class SET is_active = TRUE WHERE is_active IS NULL"))
+
         df = lessons_df.merge(
             classes_df[["campus_name", "code_new", "class_id"]],
             left_on=["campus_name", "class_code"],
