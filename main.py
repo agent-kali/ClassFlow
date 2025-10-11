@@ -152,7 +152,7 @@ class Lesson(Base):
     end_time = Column(String)
     room = Column(String)
     # Month-based week fields
-    month_week_id = Column(Integer)
+    month_week_id = Column(String)
     month = Column(Integer)
     year = Column(Integer)
     week_number = Column(Integer)

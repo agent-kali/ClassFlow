@@ -530,7 +530,13 @@ def save_to_database(campuses_df: pd.DataFrame,
 
     with ENGINE.begin() as connection:
         if not DATABASE_URL.startswith("sqlite"):
-            connection.execute(text("TRUNCATE lesson, class, campus, teacher RESTART IDENTITY CASCADE"))
+            # Detach users from teachers to allow truncation
+            connection.execute(text("UPDATE \"user\" SET teacher_id = NULL"))
+            # Truncate tables in dependency order and cascade for dependent rows
+            connection.execute(text("TRUNCATE lesson RESTART IDENTITY CASCADE"))
+            connection.execute(text("TRUNCATE class RESTART IDENTITY CASCADE"))
+            connection.execute(text("TRUNCATE campus RESTART IDENTITY CASCADE"))
+            connection.execute(text("TRUNCATE teacher RESTART IDENTITY CASCADE"))
 
         campuses_df.to_sql("campus", connection, if_exists="append", index=False)
         teachers_df.to_sql("teacher", connection, if_exists="append", index=False)
@@ -601,7 +607,9 @@ def save_to_database(campuses_df: pd.DataFrame,
         else:
             logger.info("✓ Final data is clean - no duplicates")
 
-        final.to_sql("lesson", connection, if_exists="append", index=True, index_label="id")
+        if not final.empty:
+            final["month_week_id"] = final["month_week_id"].apply(lambda v: None if pd.isna(v) else str(v))
+            final.to_sql("lesson", connection, if_exists="append", index=True, index_label="id")
 
     logger.info(f"✓ Successfully imported {len(final)} lesson entries to database")
 
