@@ -539,6 +539,8 @@ def save_to_database(campuses_df: pd.DataFrame,
             connection.execute(text("TRUNCATE teacher RESTART IDENTITY CASCADE"))
 
         campuses_df.to_sql("campus", connection, if_exists="append", index=False)
+        if "is_active" in teachers_df.columns:
+            teachers_df["is_active"] = teachers_df["is_active"].fillna(True).astype(bool)
         teachers_df.to_sql("teacher", connection, if_exists="append", index=False)
         classes_df.to_sql("class", connection, if_exists="append", index=False)
 
