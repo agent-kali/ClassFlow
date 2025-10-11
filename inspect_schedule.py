@@ -542,13 +542,11 @@ def save_to_database(campuses_df: pd.DataFrame,
 
         if "is_active" not in teachers_df.columns:
             teachers_df["is_active"] = True
-        else:
-            teachers_df["is_active"] = teachers_df["is_active"].fillna(True).astype(bool)
+        teachers_df["is_active"] = teachers_df["is_active"].fillna(True).astype(bool)
 
         if "is_active" not in classes_df.columns:
             classes_df["is_active"] = True
-        else:
-            classes_df["is_active"] = classes_df["is_active"].fillna(True).astype(bool)
+        classes_df["is_active"] = classes_df["is_active"].fillna(True).astype(bool)
 
         teachers_df.to_sql("teacher", connection, if_exists="append", index=False)
         classes_df.to_sql("class", connection, if_exists="append", index=False)
