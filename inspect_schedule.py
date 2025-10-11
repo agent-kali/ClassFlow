@@ -2,7 +2,7 @@ import os
 import re
 import datetime
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 import logging
 from typing import Dict, Set, List, Tuple, Optional
 import argparse
@@ -529,9 +529,12 @@ def save_to_database(campuses_df: pd.DataFrame,
         os.makedirs("data", exist_ok=True)
 
     with ENGINE.begin() as connection:
-        campuses_df.to_sql("campus", connection, if_exists="replace", index=False)
-        teachers_df.to_sql("teacher", connection, if_exists="replace", index=False)
-        classes_df.to_sql("class", connection, if_exists="replace", index=False)
+        if not DATABASE_URL.startswith("sqlite"):
+            connection.execute(text("TRUNCATE lesson, class, campus, teacher RESTART IDENTITY CASCADE"))
+
+        campuses_df.to_sql("campus", connection, if_exists="append", index=False)
+        teachers_df.to_sql("teacher", connection, if_exists="append", index=False)
+        classes_df.to_sql("class", connection, if_exists="append", index=False)
 
         df = lessons_df.merge(
             classes_df[["campus_name", "code_new", "class_id"]],
@@ -598,7 +601,7 @@ def save_to_database(campuses_df: pd.DataFrame,
         else:
             logger.info("✓ Final data is clean - no duplicates")
 
-        final.to_sql("lesson", connection, if_exists="replace", index=True, index_label="id")
+        final.to_sql("lesson", connection, if_exists="append", index=True, index_label="id")
 
     logger.info(f"✓ Successfully imported {len(final)} lesson entries to database")
 
