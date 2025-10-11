@@ -512,78 +512,95 @@ def build_tables(file_path: str, sheet_names: Optional[List[str]] = None):
 
     return campuses_df, teachers_df, classes_df, lessons_df
 
-def save_to_database(campuses_df: pd.DataFrame, teachers_df: pd.DataFrame, 
-                    classes_df: pd.DataFrame, lessons_df: pd.DataFrame) -> None:
-    """Save processed data to SQLite database"""
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/schedule_test.db")
+ENGINE = create_engine(DATABASE_URL, echo=False)
+
+def save_to_database(campuses_df: pd.DataFrame,
+                     teachers_df: pd.DataFrame,
+                     classes_df: pd.DataFrame,
+                     lessons_df: pd.DataFrame) -> None:
+    """Persist processed data into the configured database."""
     if lessons_df.empty:
         logger.error("No lesson data to import!")
         return
-    
-    os.makedirs("data", exist_ok=True)
-    engine = create_engine("sqlite:///data/schedule_test.db", echo=False)
-    
-    try:
-        campuses_df.to_sql("campus", engine, if_exists="replace", index=False)
-        teachers_df.to_sql("teacher", engine, if_exists="replace", index=False)
-        classes_df.to_sql("class", engine, if_exists="replace", index=False)
 
-        # Attach class IDs
+    # Ensure data directory exists for SQLite fallback
+    if DATABASE_URL.startswith("sqlite"):
+        os.makedirs("data", exist_ok=True)
+
+    with ENGINE.begin() as connection:
+        campuses_df.to_sql("campus", connection, if_exists="replace", index=False)
+        teachers_df.to_sql("teacher", connection, if_exists="replace", index=False)
+        classes_df.to_sql("class", connection, if_exists="replace", index=False)
+
         df = lessons_df.merge(
-            classes_df[["campus_name","code_new","class_id"]], 
-            left_on=["campus_name","class_code"], right_on=["campus_name","code_new"], how="left"
-        ).rename(columns={"class_id":"cid_tmp"})
+            classes_df[["campus_name", "code_new", "class_id"]],
+            left_on=["campus_name", "class_code"],
+            right_on=["campus_name", "code_new"],
+            how="left"
+        ).rename(columns={"class_id": "cid_tmp"})
 
-        # Fallback to code_old
         mask = df["cid_tmp"].isna()
         if mask.any():
-            df2 = df.loc[mask].merge(
-                classes_df[["campus_name","code_old","class_id"]],
-                left_on=["campus_name","class_code"], right_on=["campus_name","code_old"], how="left"
+            fallback_old = df.loc[mask].merge(
+                classes_df[["campus_name", "code_old", "class_id"]],
+                left_on=["campus_name", "class_code"],
+                right_on=["campus_name", "code_old"],
+                how="left"
             )
-            df.loc[mask, "cid_tmp"] = df2["class_id"]
+            df.loc[mask, "cid_tmp"] = fallback_old["class_id"]
 
-        # Fallback to name
         mask = df["cid_tmp"].isna()
         if mask.any():
-            df3 = df.loc[mask].merge(
-                classes_df[["campus_name","name","class_id"]], 
-                left_on=["campus_name","class_code"], right_on=["campus_name","name"], how="left"
+            fallback_name = df.loc[mask].merge(
+                classes_df[["campus_name", "name", "class_id"]],
+                left_on=["campus_name", "class_code"],
+                right_on=["campus_name", "name"],
+                how="left"
             )
-            df.loc[mask, "cid_tmp"] = df3["class_id"]
+            df.loc[mask, "cid_tmp"] = fallback_name["class_id"]
 
-        df.rename(columns={"cid_tmp":"class_id"}, inplace=True)
+        df.rename(columns={"cid_tmp": "class_id"}, inplace=True)
 
-        # Attach teacher_id and campus_id
         df = df.merge(
-            teachers_df[["name","teacher_id"]], 
-            left_on="teacher_name", right_on="name", how="left"
+            teachers_df[["name", "teacher_id"]],
+            left_on="teacher_name",
+            right_on="name",
+            how="left"
         ).merge(
-            campuses_df[["name","campus_id"]],
-            left_on="campus_name", right_on="name", how="left"
+            campuses_df[["name", "campus_id"]],
+            left_on="campus_name",
+            right_on="name",
+            how="left"
         )
 
-        # Check unmatched records
         unmatched = df[df["class_id"].isna() | df["teacher_id"].isna() | df["campus_id"].isna()]
         if not unmatched.empty:
             logger.warning(f"{len(unmatched)} lessons could not be fully matched")
 
-        # Final data
-        # carry forward optional room
-        df_room = df.get("room") if "room" in df.columns else None
-        final = df[["class_id","teacher_id","week","day","start_time","end_time","room","month_week_id","month","year","week_number"]].dropna(subset=["class_id","teacher_id","week","day","start_time","end_time"]).reset_index(drop=True)
-        
-        # Last duplicate check
-        final_duplicates = final[final.duplicated(subset=["class_id","teacher_id","week","day","start_time","end_time"], keep=False)]
+        final = df[[
+            "class_id",
+            "teacher_id",
+            "week",
+            "day",
+            "start_time",
+            "end_time",
+            "room",
+            "month_week_id",
+            "month",
+            "year",
+            "week_number"
+        ]].dropna(subset=["class_id", "teacher_id", "week", "day", "start_time", "end_time"]).reset_index(drop=True)
+
+        final_duplicates = final[final.duplicated(subset=["class_id", "teacher_id", "week", "day", "start_time", "end_time"], keep=False)]
         if not final_duplicates.empty:
             logger.warning(f"FINAL WARNING: {len(final_duplicates)} duplicates in final data!")
         else:
             logger.info("✓ Final data is clean - no duplicates")
 
-        final.to_sql("lesson", engine, if_exists="replace", index=True, index_label="id")
-        logger.info(f"✓ Successfully imported {len(final)} lesson entries to database")
-    except Exception as e:
-        logger.error(f"Database save failed: {e}")
-        raise
+        final.to_sql("lesson", connection, if_exists="replace", index=True, index_label="id")
+
+    logger.info(f"✓ Successfully imported {len(final)} lesson entries to database")
 
 # Main execution
 if __name__ == "__main__":
