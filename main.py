@@ -1,8 +1,9 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks, status
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, text, DateTime, Enum, or_, inspect
-from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict, Tuple
 from datetime import datetime, timedelta
@@ -11,10 +12,13 @@ import os
 import subprocess
 import logging
 import hashlib
-import secrets
 import jwt
+from passlib.context import CryptContext
 from enum import Enum as PyEnum
 import calendar
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Month-based week utility functions
 def get_first_monday_of_month(year: int, month: int) -> datetime:
@@ -74,7 +78,14 @@ def get_current_month_week() -> Tuple[int, int, int]:
 
 # Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/schedule_test.db")
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not JWT_SECRET_KEY:
+    if ENVIRONMENT in {"development", "dev", "local", "test", "testing"}:
+        JWT_SECRET_KEY = "dev-only-secret-change-me"
+        logger.warning("JWT secret not set; using development-only fallback. Never use this in production.")
+    else:
+        raise RuntimeError("JWT_SECRET_KEY environment variable must be set in production environments.")
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60  # 24 hours
 
@@ -92,10 +103,6 @@ CORS_ORIGINS = [
     "http://localhost:5180", "http://127.0.0.1:5180",
 ] + _extra_origins
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 connect_args = {}
 if DATABASE_URL.startswith("sqlite"):
@@ -143,9 +150,11 @@ class ClassModel(Base):
 
 class Lesson(Base):
     __tablename__ = "lesson"
+    __table_args__ = {"sqlite_autoincrement": True}
     id = Column(Integer, primary_key=True, index=True)
     class_id = Column(Integer, ForeignKey("class.class_id"))
     teacher_id = Column(Integer, ForeignKey("teacher.teacher_id"))
+    co_teacher_id = Column(Integer, ForeignKey("teacher.teacher_id"), nullable=True)
     week = Column(Integer)
     day = Column(String)
     start_time = Column(String)
@@ -171,16 +180,21 @@ class User(Base):
 # Pydantic models
 class LessonOut(BaseModel):
     id: Optional[int] = None  # Add lesson ID for CRUD operations
-    week: int
+    week: Optional[int] = None
     day: str
     start_time: str
     end_time: str
     class_code: str
     teacher_name: str
+    teacher_id: Optional[int] = None  # Add teacher ID for editing
+    class_id: Optional[int] = None   # Add class ID for editing
+    co_teacher_id: Optional[int] = None
+    co_teacher_name: Optional[str] = None
     campus_name: str
     room: Optional[str] = None
     co_teachers: Optional[List[str]] = None
     duration_minutes: int  # Added for convenience
+    notes: Optional[str] = None  # Add notes field
     # Month-based week fields
     month: Optional[int] = None
     year: Optional[int] = None
@@ -279,6 +293,7 @@ class Token(BaseModel):
 # Lesson management Pydantic models
 class LessonCreate(BaseModel):
     teacher_id: int
+    co_teacher_id: Optional[int] = None
     class_id: int
     week: int
     day: str
@@ -292,6 +307,7 @@ class LessonCreate(BaseModel):
 
 class LessonUpdate(BaseModel):
     teacher_id: Optional[int] = None
+    co_teacher_id: Optional[int] = None
     class_id: Optional[int] = None
     week: Optional[int] = None
     day: Optional[str] = None
@@ -330,18 +346,64 @@ app.add_middleware(
 security = HTTPBearer()
 
 # Authentication utilities
-def hash_password(password: str) -> str:
-    """Hash password using SHA-256 with salt"""
-    salt = secrets.token_hex(16)
-    return hashlib.sha256((password + salt).encode()).hexdigest() + ":" + salt
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__default_rounds=12)
 
-def verify_password(password: str, hashed: str) -> bool:
-    """Verify password against hash"""
+
+def _is_legacy_hash(hash_value: str) -> bool:
+    return ":" in (hash_value or "")
+
+
+def _verify_legacy_password(password: str, hashed: str) -> bool:
     try:
-        hash_part, salt = hashed.split(":")
+        hash_part, salt = hashed.split(":", 1)
         return hashlib.sha256((password + salt).encode()).hexdigest() == hash_part
     except ValueError:
         return False
+
+
+def hash_password(password: str) -> str:
+    """Hash password using bcrypt via Passlib"""
+    try:
+        # bcrypt has a 72-byte limit, so truncate if necessary
+        if len(password.encode('utf-8')) > 72:
+            password = password[:72]
+        return pwd_context.hash(password)
+    except Exception as e:
+        logger.error(f"Error hashing password: {e}")
+        # Fallback to legacy method if bcrypt fails
+        import secrets
+        salt = secrets.token_hex(16)
+        return hashlib.sha256((password + salt).encode()).hexdigest() + ":" + salt
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Verify password against stored hash, supporting legacy SHA-256 hashes"""
+    if not hashed:
+        return False
+    if _is_legacy_hash(hashed):
+        return _verify_legacy_password(password, hashed)
+    try:
+        # bcrypt has a 72-byte limit, so truncate if necessary
+        if len(password.encode('utf-8')) > 72:
+            password = password[:72]
+        return pwd_context.verify(password, hashed)
+    except Exception as e:
+        logger.error(f"Error verifying password: {e}")
+        return False
+
+
+def maybe_upgrade_password_hash(user: "User", plain_password: str, db: Session) -> None:
+    """Re-hash legacy SHA-256 passwords with bcrypt on successful login."""
+    if not _is_legacy_hash(user.hashed_password):
+        return
+    new_hash = hash_password(plain_password)
+    user.hashed_password = new_hash
+    try:
+        db.add(user)
+        db.commit()
+    except Exception as exc:
+        logger.warning("Failed to upgrade password hash for user %s: %s", user.username, exc)
+        db.rollback()
 
 def create_access_token(data: dict) -> str:
     """Create JWT access token"""
@@ -460,17 +522,87 @@ def ensure_indexes() -> None:
             if backend_name == "sqlite":
                 try:
                     res = conn.execute(text("PRAGMA table_info(lesson)")).fetchall()
-                    has_room = any(
-                        getattr(r, "name", None) == "room" or 
-                        (isinstance(r, tuple) and len(r) > 1 and r[1] == "room") 
+                    column_lookup = {
+                        getattr(r, "name", None) or (r[1] if isinstance(r, tuple) and len(r) > 1 else None): r
                         for r in res
+                    }
+                    has_room = any(
+                        name == "room"
+                        for name in column_lookup.keys()
                     )
                     if not has_room:
                         conn.execute(text("ALTER TABLE lesson ADD COLUMN room TEXT"))
                         logger.info("Added room column to lesson table")
+                    # Promote legacy id column to INTEGER PRIMARY KEY AUTOINCREMENT if needed
+                    id_column = column_lookup.get("id")
+                    # PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
+                    pk_flag = None
+                    column_type = None
+                    if id_column is not None:
+                        if isinstance(id_column, tuple):
+                            _, _, column_type, _, _, pk_flag = id_column
+                        else:
+                            column_type = getattr(id_column, "type", None)
+                            pk_flag = getattr(id_column, "pk", None)
+                    needs_rebuild = False
+                    if id_column is None:
+                        needs_rebuild = True
+                    else:
+                        normalized_type = (column_type or "").upper()
+                        if pk_flag != 1 or normalized_type not in {"INTEGER", "INT", "BIGINT"}:
+                            needs_rebuild = True
+                    if needs_rebuild:
+                        logger.warning("Rebuilding lesson table to ensure auto-incrementing primary key")
+                        try:
+                            conn.execute(text("DROP TABLE IF EXISTS lesson_legacy_autoinc"))
+                            conn.execute(text("ALTER TABLE lesson RENAME TO lesson_legacy_autoinc"))
+                            conn.execute(text(
+                                """
+                                CREATE TABLE lesson (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    class_id BIGINT REFERENCES class(class_id),
+                                    teacher_id BIGINT REFERENCES teacher(teacher_id),
+                                    co_teacher_id INTEGER REFERENCES teacher(teacher_id),
+                                    week BIGINT,
+                                    day TEXT,
+                                    start_time TEXT,
+                                    end_time TEXT,
+                                    room TEXT,
+                                    month_week_id TEXT,
+                                    month BIGINT,
+                                    year BIGINT,
+                                    week_number BIGINT
+                                )
+                                """
+                            ))
+                            column_order = [
+                                "id",
+                                "class_id",
+                                "teacher_id",
+                                "co_teacher_id",
+                                "week",
+                                "day",
+                                "start_time",
+                                "end_time",
+                                "room",
+                                "month_week_id",
+                                "month",
+                                "year",
+                                "week_number",
+                            ]
+                            column_csv = ", ".join(column_order)
+                            conn.execute(text(
+                                f"INSERT INTO lesson ({column_csv}) SELECT {column_csv} FROM lesson_legacy_autoinc"
+                            ))
+                            conn.execute(text("DROP TABLE lesson_legacy_autoinc"))
+                            logger.info("Lesson table rebuilt with auto-incrementing primary key")
+                        except Exception as rebuild_error:
+                            logger.error(f"Failed to rebuild lesson table: {rebuild_error}")
+                            conn.execute(text("ALTER TABLE lesson_legacy_autoinc RENAME TO lesson"))
+                            raise
                 except Exception as e:
                     logger.warning(f"Could not check/add room column: {e}")
-
+            
             # Create indexes, respecting reserved keywords in PostgreSQL
             lesson_indexes = [
                 "CREATE INDEX IF NOT EXISTS idx_lesson_teacher_week_day_time ON lesson(teacher_id, week, day, start_time, end_time)",
@@ -478,7 +610,7 @@ def ensure_indexes() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_lesson_room ON lesson(room)",
                 "CREATE UNIQUE INDEX IF NOT EXISTS uniq_lesson ON lesson(class_id, teacher_id, week, day, start_time, end_time)"
             ]
-
+            
             user_indexes = [
                 "CREATE INDEX IF NOT EXISTS idx_user_username ON \"user\"(username)",
                 "CREATE INDEX IF NOT EXISTS idx_user_email ON \"user\"(email)",
@@ -490,7 +622,7 @@ def ensure_indexes() -> None:
                     conn.execute(text(idx_sql))
                 except Exception as e:
                     logger.warning(f"Could not create index: {e}")
-
+            
             conn.commit()
             logger.info("Database schema and indexes ensured")
 
@@ -499,29 +631,44 @@ def ensure_indexes() -> None:
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
 
-def _create_default_admin():
-    """Create default admin user if no users exist"""
+def _create_default_admin() -> None:
+    """Create an initial admin user when no accounts exist and secure credentials are provided."""
+    admin_username = os.getenv("ADMIN_BOOTSTRAP_USERNAME")
+    admin_password = os.getenv("ADMIN_BOOTSTRAP_PASSWORD")
+    admin_email = os.getenv("ADMIN_BOOTSTRAP_EMAIL")
+
     try:
         db = SessionLocal()
         try:
             existing_users = db.query(User).count()
-            if existing_users == 0:
-                admin_user = User(
-                    username="admin",
-                    email="admin@ehome.com",
-                    hashed_password=hash_password("admin123"),  # Change this in production!
-                    role=UserRole.ADMIN,
-                    is_active=True
+            if existing_users > 0:
+                return
+
+            if not admin_username or not admin_password or not admin_email:
+                message = (
+                    "No admin bootstrap credentials provided; initial admin account was not created."
                 )
-                db.add(admin_user)
-                db.commit()
-                logger.info("Created default admin user (username: admin, password: admin123)")
+                if ENVIRONMENT in {"production", "prod"}:
+                    raise RuntimeError(message)
+                logger.warning(message)
+                return
+
+            admin_user = User(
+                username=admin_username,
+                email=admin_email,
+                hashed_password=hash_password(admin_password),
+                role=UserRole.ADMIN,
+                is_active=True
+            )
+            db.add(admin_user)
+            db.commit()
+            logger.info("Created initial admin user %s from bootstrap credentials", admin_username)
         except Exception as e:
-            logger.warning(f"Could not create default admin user: {e}")
+            logger.warning(f"Could not create bootstrap admin user: {e}")
         finally:
             db.close()
     except Exception as e:
-        logger.error(f"Failed to create default admin: {e}")
+        logger.error(f"Failed to create bootstrap admin: {e}")
 
 def check_lesson_conflicts(db: Session, lesson_data: LessonCreate, exclude_lesson_id: Optional[int] = None) -> List[str]:
     """Check for scheduling conflicts with a new or updated lesson"""
@@ -545,10 +692,19 @@ def check_lesson_conflicts(db: Session, lesson_data: LessonCreate, exclude_lesso
         .join(ClassModel, Lesson.class_id == ClassModel.class_id)
         .join(Teacher, Lesson.teacher_id == Teacher.teacher_id)
         .filter(
-            Lesson.week == lesson_data.week,
             Lesson.day == lesson_data.day,
         )
     )
+    
+    # Filter by week or month-based week depending on what's available
+    if lesson_data.week is not None:
+        conflict_query = conflict_query.filter(Lesson.week == lesson_data.week)
+    elif lesson_data.month is not None and lesson_data.year is not None and lesson_data.week_number is not None:
+        conflict_query = conflict_query.filter(
+            Lesson.month == lesson_data.month,
+            Lesson.year == lesson_data.year,
+            Lesson.week_number == lesson_data.week_number
+        )
     
     # Exclude the lesson being updated
     if exclude_lesson_id:
@@ -571,12 +727,48 @@ def check_lesson_conflicts(db: Session, lesson_data: LessonCreate, exclude_lesso
                     f"from {lesson.start_time} to {lesson.end_time}"
                 )
             
+            # BIDIRECTIONAL co-teacher conflict detection:
+            # - If NEW lesson has a co-teacher, check if that co-teacher is primary in another lesson
+            # - If EXISTING lesson has a co-teacher, check if new teacher matches it
+            if lesson_data.co_teacher_id:
+                # Check if the new co-teacher is already primary teacher in another lesson
+                if lesson.teacher_id == lesson_data.co_teacher_id:
+                    co_teacher = db.query(Teacher).filter(Teacher.teacher_id == lesson_data.co_teacher_id).first()
+                    if co_teacher:
+                        conflicts.append(
+                            f"Co-teacher {co_teacher.name} is already scheduled as primary teacher for {cls.code_new or cls.code_old} "
+                            f"from {lesson.start_time} to {lesson.end_time}"
+                        )
+            
+            # If existing lesson has a co-teacher, check if new teacher matches it
+            if lesson.co_teacher_id == lesson_data.teacher_id:
+                conflicts.append(
+                    f"Teacher {teacher.name} is already scheduled as co-teacher for {cls.code_new or cls.code_old} "
+                    f"from {lesson.start_time} to {lesson.end_time}"
+                )
+            
+            # Co-teacher conflict (if both lessons have co-teachers)
+            if lesson_data.co_teacher_id and lesson.co_teacher_id and lesson.co_teacher_id == lesson_data.co_teacher_id:
+                co_teacher = db.query(Teacher).filter(Teacher.teacher_id == lesson_data.co_teacher_id).first()
+                if co_teacher:
+                    conflicts.append(
+                        f"Co-teacher {co_teacher.name} is already scheduled for {cls.code_new or cls.code_old} "
+                        f"from {lesson.start_time} to {lesson.end_time}"
+                    )
+            
             # Room conflict
             if lesson_data.room and lesson.room and lesson.room == lesson_data.room:
                 conflicts.append(
                     f"Room {lesson_data.room} is already booked for {existing_teacher.name} "
                     f"({cls.code_new or cls.code_old}) from {lesson.start_time} to {lesson.end_time}"
                 )
+
+    # If there are no teacher/room conflicts but only co-teacher chosen, allow it
+    # Co-teachers are assistants and can overlap with primary teacher's slots
+    if conflicts and lesson_data.co_teacher_id and not any(
+        msg.startswith("Teacher ") or msg.startswith("Room ") for msg in conflicts
+    ):
+        conflicts = []
     
     return conflicts
 
@@ -628,27 +820,52 @@ def _create_grouped_lesson(group: List[LessonOut]) -> LessonOut:
                     merged_co.append(name)
     
     return LessonOut(
+        id=first.id,
         week=first.week,
         day=first.day,
         start_time=first.start_time,
         end_time=last.end_time,
         class_code=first.class_code,
         teacher_name=first.teacher_name,
+        teacher_id=getattr(first, 'teacher_id', None),
+        class_id=getattr(first, 'class_id', None),
+        co_teacher_id=getattr(first, 'co_teacher_id', None),
+        co_teacher_name=getattr(first, 'co_teacher_name', None),
         campus_name=first.campus_name,
         room=first.room,
         co_teachers=merged_co or None,
-        duration_minutes=duration
+        duration_minutes=duration,
+        notes=getattr(first, 'notes', None),
+        month=getattr(first, 'month', None),
+        year=getattr(first, 'year', None),
+        week_number=getattr(first, 'week_number', None),
+        month_week_display=getattr(first, 'month_week_display', None)
     )
 
 def _build_lessons_from_rows(
     rows,
     co_map: Optional[Dict[Tuple[int, int, str, str, str], List[str]]] = None,
     exclude_teacher: Optional[str] = None,
+    viewing_teacher_id: Optional[int] = None,
 ) -> List[LessonOut]:
-    """Convert DB rows to LessonOut objects, optionally attaching co-teachers"""
+    """Convert DB rows to LessonOut objects, optionally attaching co-teachers
+    
+    Args:
+        rows: Database rows containing lesson, class, teacher, and co-teacher info
+        co_map: Map of co-teachers for each lesson slot
+        exclude_teacher: Name of teacher to exclude from co-teacher lists
+        viewing_teacher_id: If provided, swap roles when viewing teacher is co-teacher
+    """
     items: List[LessonOut] = []
     norm_exclude = exclude_teacher.strip().casefold() if exclude_teacher else None
-    for lesson, cls, teacher in rows:
+    
+    # Handle both old format (lesson, cls, teacher) and new format (lesson, cls, teacher, co_teacher)
+    for row in rows:
+        if len(row) == 3:
+            lesson, cls, teacher = row
+            co_teacher = None
+        else:
+            lesson, cls, teacher, co_teacher = row
         if lesson is None or cls is None or teacher is None:
             continue
         key = (cls.class_id, lesson.week, lesson.day, lesson.start_time, lesson.end_time)
@@ -659,6 +876,21 @@ def _build_lessons_from_rows(
                 names = [n for n in names if n.strip().casefold() != norm_exclude]
             co_list = names or None
 
+        # If viewing_teacher_id is provided and matches the co_teacher_id, swap roles
+        # This makes the co-teacher appear as the primary teacher in their own view
+        if viewing_teacher_id and lesson.co_teacher_id and lesson.co_teacher_id == viewing_teacher_id:
+            # Swap: co-teacher becomes primary, primary becomes co-teacher
+            primary_teacher = co_teacher  # co-teacher (viewing teacher) becomes primary
+            assistant_teacher = teacher   # original primary becomes assistant
+            primary_teacher_id = lesson.co_teacher_id  # co-teacher ID becomes primary
+            assistant_teacher_id = lesson.teacher_id   # original primary ID becomes assistant
+        else:
+            # Normal case: keep roles as they are in database
+            primary_teacher = teacher
+            assistant_teacher = co_teacher
+            primary_teacher_id = lesson.teacher_id
+            assistant_teacher_id = lesson.co_teacher_id
+
         items.append(
             LessonOut(
                 id=lesson.id,
@@ -667,11 +899,21 @@ def _build_lessons_from_rows(
                 start_time=lesson.start_time,
                 end_time=lesson.end_time,
                 class_code=(cls.code_new or cls.code_old),
-                teacher_name=teacher.name,
+                teacher_name=primary_teacher.name,
+                teacher_id=primary_teacher.teacher_id,  # Primary teacher ID (swapped if viewing co-teacher)
+                class_id=cls.class_id,  # Add class ID for editing
+                co_teacher_id=assistant_teacher_id,  # Co-teacher ID (swapped if viewing co-teacher)
+                co_teacher_name=assistant_teacher.name if assistant_teacher else None,  # Co-teacher name (swapped)
                 campus_name=cls.campus_name,
                 room=getattr(lesson, 'room', None),
                 co_teachers=co_list,
                 duration_minutes=30,
+                notes=getattr(lesson, 'notes', None),  # Add notes field
+                # Month-based week fields
+                month=lesson.month,
+                year=lesson.year,
+                week_number=lesson.week_number,
+                month_week_display=get_week_display_name(lesson.year, lesson.month, lesson.week_number) if lesson.month and lesson.year and lesson.week_number else None
             )
         )
     return items
@@ -774,6 +1016,9 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
     
     if not user or not user.is_active or not verify_password(user_credentials.password, user.hashed_password):
         raise HTTPException(401, "Invalid credentials")
+
+    if _is_legacy_hash(user.hashed_password):
+        maybe_upgrade_password_hash(user, user_credentials.password, db)
     
     access_token = create_access_token({"sub": user.username})
     
@@ -845,6 +1090,15 @@ def check_conflicts(
     conflicts = check_lesson_conflicts(db, lesson_data)
     return ConflictCheck(conflicts=conflicts, can_create=len(conflicts) == 0)
 
+def validate_lesson_times(start_time: str, end_time: str) -> None:
+    """Validate that lesson times are within allowed range (17:00 - 20:30)"""
+    if start_time < '17:00' or start_time > '20:30':
+        raise HTTPException(400, f"Start time must be between 17:00 (5:00 PM) and 20:30 (8:30 PM), got {start_time}")
+    if end_time < '17:00' or end_time > '20:30':
+        raise HTTPException(400, f"End time must be between 17:00 (5:00 PM) and 20:30 (8:30 PM), got {end_time}")
+    if start_time >= end_time:
+        raise HTTPException(400, "End time must be after start time")
+
 @app.post("/lessons", response_model=LessonOut)
 def create_lesson(
     lesson_data: LessonCreate, 
@@ -852,6 +1106,9 @@ def create_lesson(
     current_user: User = Depends(require_manager_or_admin)
 ):
     """Create a new lesson"""
+    # Validate time restrictions
+    validate_lesson_times(lesson_data.start_time, lesson_data.end_time)
+    
     # Check for conflicts
     conflicts = check_lesson_conflicts(db, lesson_data)
     if conflicts:
@@ -860,8 +1117,9 @@ def create_lesson(
     # Create the lesson
     new_lesson = Lesson(
         teacher_id=lesson_data.teacher_id,
+        co_teacher_id=lesson_data.co_teacher_id,
         class_id=lesson_data.class_id,
-        week=lesson_data.week,
+        week=(lesson_data.week if lesson_data.week is not None else lesson_data.week_number),
         day=lesson_data.day,
         start_time=lesson_data.start_time,
         end_time=lesson_data.end_time,
@@ -874,8 +1132,50 @@ def create_lesson(
     )
     
     db.add(new_lesson)
-    db.commit()
-    db.refresh(new_lesson)
+
+    try:
+        db.commit()
+        try:
+            db.refresh(new_lesson)
+        except Exception as refresh_error:
+            logger.warning(f"Primary refresh failed for lesson insert, attempting fallback lookup: {refresh_error}")
+            fallback = (
+                db.query(Lesson)
+                .filter(
+                    Lesson.class_id == new_lesson.class_id,
+                    Lesson.teacher_id == new_lesson.teacher_id,
+                    Lesson.day == new_lesson.day,
+                    Lesson.start_time == new_lesson.start_time,
+                    Lesson.end_time == new_lesson.end_time,
+                    Lesson.room == new_lesson.room,
+                    Lesson.week == new_lesson.week,
+                )
+                .order_by(Lesson.id.desc())
+                .first()
+            )
+            if fallback is None:
+                raise HTTPException(status_code=500, detail="Lesson saved but could not be reloaded. Please refresh and verify.")
+            new_lesson = fallback
+    except IntegrityError as exc:
+        db.rollback()
+
+        message = "Unable to create lesson"
+        detail_text = str(exc.orig) if getattr(exc, "orig", None) else str(exc)
+
+        if "UNIQUE constraint failed" in detail_text:
+            message = (
+                "Lesson already exists for this class, teacher, week, day and time. "
+                "Please adjust the slot or edit the existing lesson instead."
+            )
+            raise HTTPException(status_code=409, detail=message)
+
+        if "FOREIGN KEY constraint failed" in detail_text:
+            message = (
+                "Invalid teacher or co-teacher selection. Please re-select from the list."
+            )
+            raise HTTPException(status_code=400, detail=message)
+
+        raise HTTPException(status_code=500, detail=message)
     
     # Return the created lesson in the expected format
     lesson_with_details = (
@@ -970,15 +1270,26 @@ def update_lesson(
     if not existing_lesson:
         raise HTTPException(404, "Lesson not found")
     
+    # Determine final start_time and end_time values
+    final_start_time = lesson_update.start_time or existing_lesson.start_time
+    final_end_time = lesson_update.end_time or existing_lesson.end_time
+    
+    # Validate time restrictions
+    validate_lesson_times(final_start_time, final_end_time)
+    
     # Create a LessonCreate object for conflict checking with updated values
     lesson_data = LessonCreate(
         teacher_id=lesson_update.teacher_id or existing_lesson.teacher_id,
         class_id=lesson_update.class_id or existing_lesson.class_id,
         week=lesson_update.week or existing_lesson.week,
         day=lesson_update.day or existing_lesson.day,
-        start_time=lesson_update.start_time or existing_lesson.start_time,
-        end_time=lesson_update.end_time or existing_lesson.end_time,
-        room=lesson_update.room if lesson_update.room is not None else existing_lesson.room
+        start_time=final_start_time,
+        end_time=final_end_time,
+        room=lesson_update.room if lesson_update.room is not None else existing_lesson.room,
+        # Include month-based week fields for proper conflict checking
+        month=lesson_update.month or existing_lesson.month,
+        year=lesson_update.year or existing_lesson.year,
+        week_number=lesson_update.week_number or existing_lesson.week_number
     )
     
     # Check for conflicts (excluding the current lesson)
@@ -1001,6 +1312,13 @@ def update_lesson(
         existing_lesson.end_time = lesson_update.end_time
     if lesson_update.room is not None:
         existing_lesson.room = lesson_update.room
+    # Update month-based week fields
+    if lesson_update.month is not None:
+        existing_lesson.month = lesson_update.month
+    if lesson_update.year is not None:
+        existing_lesson.year = lesson_update.year
+    if lesson_update.week_number is not None:
+        existing_lesson.week_number = lesson_update.week_number
     
     db.commit()
     db.refresh(existing_lesson)
@@ -1161,17 +1479,26 @@ def _get_schedule_rows(
     month: Optional[int] = None,
     year: Optional[int] = None,
     week_number: Optional[int] = None
-) -> List[Tuple[Lesson, ClassModel, Teacher]]:
+) -> List[Tuple[Lesson, ClassModel, Teacher, Teacher]]:
     """Get schedule rows based on filters"""
+    from sqlalchemy.orm import aliased
+    CoTeacher = aliased(Teacher)
+    
     query = (
-        db.query(Lesson, ClassModel, Teacher)
+        db.query(Lesson, ClassModel, Teacher, CoTeacher)
         .join(ClassModel, Lesson.class_id == ClassModel.class_id)
         .join(Teacher, Lesson.teacher_id == Teacher.teacher_id)
+        .outerjoin(CoTeacher, Lesson.co_teacher_id == CoTeacher.teacher_id)
     )
     
-    # Filter by teacher
+    # Filter by teacher (both as primary teacher AND as co-teacher)
     if teacher_id is not None:
-        query = query.filter(Lesson.teacher_id == teacher_id)
+        query = query.filter(
+            or_(
+                Lesson.teacher_id == teacher_id,
+                Lesson.co_teacher_id == teacher_id
+            )
+        )
     
     # Filter by class
     if class_id is not None:
@@ -1226,7 +1553,7 @@ def get_teacher_schedule(
     # Gather keys from selected teacher's rows
     keys: List[Tuple[int, int, str, str, str]] = [
         (cls.class_id, lesson.week, lesson.day, lesson.start_time, lesson.end_time)
-        for lesson, cls, _ in rows
+        for lesson, cls, _, _ in rows
         if lesson is not None and cls is not None
     ]
     if keys:
@@ -1278,7 +1605,11 @@ def get_teacher_schedule(
     else:
         co_map = {}
 
-    lessons = _build_lessons_from_rows(rows, co_map=co_map, exclude_teacher=teacher_exists.name)
+    lessons = _build_lessons_from_rows(rows, co_map=co_map, exclude_teacher=teacher_exists.name, viewing_teacher_id=teacher_id)
+    # Backfill legacy "week" if it's missing to satisfy old consumers
+    for lesson in lessons:
+        if getattr(lesson, 'week', None) is None and getattr(lesson, 'week_number', None) is not None:
+            lesson.week = lesson.week_number
     unique_lessons = _deduplicate_lessons(lessons)
     # Preserve co-teachers even when not grouped (if duplicates had different co lists)
     if not grouped:
@@ -1336,14 +1667,35 @@ def list_teachers(
     current_user: User = Depends(require_any_role)
 ):
     """List all teachers with optional filtering"""
-    query = db.query(Teacher)
-    
-    if search:
-        query = query.filter(Teacher.name.ilike(f"%{search}%"))
-    if is_active is not None:
-        query = query.filter(Teacher.is_active == is_active)
-    
-    teachers = query.all()
+    try:
+        query = db.query(Teacher)
+        
+        if search:
+            query = query.filter(Teacher.name.ilike(f"%{search}%"))
+        if is_active is not None:
+            query = query.filter(Teacher.is_active == is_active)
+        
+        teachers = query.all()
+    except Exception as e:
+        logger.error(f"Error querying teachers: {e}")
+        # Fallback: return basic teacher info without optional fields
+        query = db.query(Teacher.teacher_id, Teacher.name, Teacher.is_foreign, Teacher.is_active)
+        
+        if search:
+            query = query.filter(Teacher.name.ilike(f"%{search}%"))
+        if is_active is not None:
+            query = query.filter(Teacher.is_active == is_active)
+        
+        teacher_rows = query.all()
+        # Convert to Teacher objects
+        teachers = []
+        for row in teacher_rows:
+            teacher = Teacher()
+            teacher.teacher_id = row.teacher_id
+            teacher.name = row.name
+            teacher.is_foreign = row.is_foreign
+            teacher.is_active = row.is_active
+            teachers.append(teacher)
     
     # Count lessons for each teacher
     result = []
@@ -1357,9 +1709,9 @@ def list_teachers(
         result.append(TeacherOut(
             teacher_id=teacher.teacher_id,
             name=teacher.name,
-            email=teacher.email,
-            phone=teacher.phone,
-            specialization=teacher.specialization,
+            email=getattr(teacher, 'email', None),
+            phone=getattr(teacher, 'phone', None),
+            specialization=getattr(teacher, 'specialization', None),
             is_active=teacher.is_active,
             lesson_count=lesson_count
         ))
@@ -1527,12 +1879,18 @@ def list_classes(
             continue
             
         lesson_count = db.query(Lesson).filter(Lesson.class_id == cls.class_id).count()
+        level_value = None
+        if getattr(cls, "level", None) is not None:
+            level_value = str(cls.level)
+
+        campus_value = cls.campus_name if cls.campus_name is not None else ""
+
         result.append(ClassOut(
             class_id=cls.class_id,
             code_new=cls.code_new,
             code_old=cls.code_old,
-            campus_name=cls.campus_name,
-            level=cls.level,
+            campus_name=campus_value,
+            level=level_value,
             capacity=cls.capacity,
             is_active=cls.is_active,
             lesson_count=lesson_count

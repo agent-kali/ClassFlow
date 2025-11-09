@@ -83,6 +83,10 @@ export type ScheduleFilter = {
   day?: string;
   campus?: string;
   grouped?: boolean;
+  // Month-based week parameters
+  month?: number;
+  year?: number;
+  week_number?: number;
 };
 
 import type { 

@@ -28,7 +28,7 @@ Import class schedules from Excel into SQLite and expose a FastAPI service to qu
 - Python 3.10+
 - pip
 
-Python packages:
+Python packages (install via `pip install -r requirements.txt`):
 
 ```
 fastapi
@@ -36,7 +36,9 @@ uvicorn
 sqlalchemy
 pandas
 openpyxl
-python-multipart  # For file uploads
+python-multipart
+passlib[bcrypt]
+PyJWT
 ```
 
 ## Setup
@@ -52,6 +54,22 @@ source venv/bin/activate  # Windows: venv\\Scripts\\activate
 
 ```bash
 pip install -r requirements.txt
+```
+
+Configure environment variables before running the API (example `.env` file):
+
+```
+# Required in production
+DATABASE_URL=postgresql://...
+JWT_SECRET_KEY=super-secret-jwt-key
+
+# Required for first-run bootstrap when no users exist
+ADMIN_BOOTSTRAP_USERNAME=admin@example.com
+ADMIN_BOOTSTRAP_PASSWORD=ChangeMeNow!
+ADMIN_BOOTSTRAP_EMAIL=admin@example.com
+
+# Optional environment label (defaults to development)
+ENVIRONMENT=development
 ```
 
 ## Prepare the data

@@ -50,6 +50,23 @@ const DAY_NAME_MAP: Record<string, number> = {
   Sunday: 6,
 };
 
+const DAY_ALIASES: Record<string, string> = {
+  mon: "Mon",
+  monday: "Monday",
+  tue: "Tue",
+  tuesday: "Tuesday",
+  wed: "Wed",
+  wednesday: "Wednesday",
+  thu: "Thu",
+  thursday: "Thursday",
+  fri: "Fri",
+  friday: "Friday",
+  sat: "Sat",
+  saturday: "Saturday",
+  sun: "Sun",
+  sunday: "Sunday",
+};
+
 const MAX_VISIBLE_LESSONS = 3;
 
 export default function MonthGrid({
@@ -75,8 +92,8 @@ export default function MonthGrid({
   const lessonMap = React.useMemo(() => {
     const map = new Map<string, LessonWithDate[]>();
 
-    for (const lesson of lessons) {
-      const lessonDate = resolveLessonDate(lesson);
+  for (const lesson of lessons) {
+    const lessonDate = resolveLessonDate(lesson);
       const key = lessonDate ? format(lessonDate, "yyyy-MM-dd") : undefined;
       if (!key) continue;
 
@@ -167,7 +184,7 @@ function DayCell({
 
   return (
     <div
-      className={`group relative flex min-h-[140px] flex-col border-b border-gray-100 bg-gradient-to-br p-2 transition-colors sm:min-h-[180px] sm:border-b-0 sm:border-r ${
+      className={`group relative flex min-h-[120px] flex-col border-b border-gray-100 bg-gradient-to-br p-1.5 sm:p-2 transition-colors sm:min-h-[180px] sm:border-b-0 sm:border-r ${
         isToday
           ? "from-orange-50 via-white to-white ring-2 ring-offset-2 ring-orange-400"
           : isCurrentMonth
@@ -176,7 +193,7 @@ function DayCell({
       } ${isWeekend ? "bg-opacity-95" : ""}`}
     >
       <div className="flex items-center justify-between">
-        <div className={`text-sm font-semibold ${isCurrentMonth ? "text-gray-900" : "text-gray-400"}`}>
+        <div className={`text-xs sm:text-sm font-semibold ${isCurrentMonth ? "text-gray-900" : "text-gray-400"}`}>
           {dayLabel}
         </div>
 
@@ -184,10 +201,10 @@ function DayCell({
           <button
             type="button"
             onClick={() => onAddLesson(new Date(date))}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-200 text-orange-500 shadow transition-all duration-200 hover:bg-orange-500 hover:text-white focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+            className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-orange-200 text-orange-500 shadow transition-all duration-200 hover:bg-orange-500 hover:text-white focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
             title="Add lesson"
           >
-            <PlusIcon className="h-4 w-4" />
+            <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
           </button>
         )}
       </div>
@@ -205,13 +222,13 @@ function DayCell({
         ))}
 
         {extraCount > 0 && (
-          <div className="rounded-lg border border-dashed border-orange-300 bg-orange-50/80 px-2 py-1 text-xs font-medium text-orange-700">
+          <div className="rounded-lg border border-dashed border-orange-300 bg-orange-50/80 px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-medium text-orange-700">
             +{extraCount} more
           </div>
         )}
 
         {!lessons.length && !isEditMode && (
-          <div className="mt-auto rounded-lg border border-dashed border-gray-200 bg-white/60 px-2 py-3 text-center text-xs text-gray-400">
+          <div className="mt-auto rounded-lg border border-dashed border-gray-200 bg-white/60 px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-xs text-gray-400">
             No lessons
           </div>
         )}
@@ -237,42 +254,42 @@ function LessonChip({
   const teacher = lesson.teacher_name;
 
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-gray-100 bg-white/95 shadow-sm transition hover:border-orange-200 hover:shadow-md">
+    <div className="group relative overflow-hidden rounded-lg sm:rounded-xl border border-gray-100 bg-white/95 shadow-sm transition hover:border-orange-200 hover:shadow-md">
       <button
         type="button"
         onClick={() => onLessonEdit?.(lesson)}
-        className="flex w-full flex-col items-start gap-1 px-3 py-2 text-left focus:outline-none"
+        className="flex w-full flex-col items-start gap-0.5 sm:gap-1 px-2 sm:px-3 py-1.5 sm:py-2 text-left focus:outline-none"
       >
-        <div className="flex w-full items-center justify-between text-xs font-semibold text-gray-500">
+        <div className="flex w-full items-center justify-between text-[10px] sm:text-xs font-semibold text-gray-500">
           <span className="tabular-nums text-gray-700">
             {lesson.start_time?.slice(0, 5)} – {lesson.end_time?.slice(0, 5)}
           </span>
           {campus && (
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-600">
+            <span className="rounded-full bg-gray-100 px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] uppercase tracking-wide text-gray-600">
               {campus}
             </span>
           )}
         </div>
-        <div className="text-sm font-semibold text-gray-900">
+        <div className="text-xs sm:text-sm font-semibold text-gray-900 truncate w-full">
           {lesson.class_code ?? "Unnamed"}
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 text-[11px] text-gray-500">
+        <div className="flex w-full flex-wrap items-center gap-1 sm:gap-2 text-[9px] sm:text-[11px] text-gray-500">
           {lesson.room && (
-            <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-gray-600">
+            <span className="rounded-full border border-gray-200 bg-gray-50 px-1.5 sm:px-2 py-0.5 text-gray-600">
               {lesson.room}
             </span>
           )}
           {showTeacherName && teacher && (
-            <span className="flex items-center gap-1 text-gray-600">
-              <EllipsisHorizontalIcon className="h-3 w-3" />
-              {teacher}
+            <span className="flex items-center gap-1 text-gray-600 truncate">
+              <EllipsisHorizontalIcon className="h-2 w-2 sm:h-3 sm:w-3 flex-shrink-0" />
+              <span className="truncate">{teacher}</span>
             </span>
           )}
         </div>
       </button>
 
       {isEditMode && (
-        <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+        <div className="absolute right-1 sm:right-2 top-1 sm:top-2 flex items-center gap-0.5 sm:gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
           {onLessonEdit && (
             <button
               type="button"
@@ -280,10 +297,10 @@ function LessonChip({
                 event.stopPropagation();
                 onLessonEdit(lesson);
               }}
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-orange-600 shadow ring-1 ring-orange-200 hover:bg-orange-50 hover:text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className="flex h-5 w-5 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-white/90 text-orange-600 shadow ring-1 ring-orange-200 hover:bg-orange-50 hover:text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500"
               title="Edit lesson"
             >
-              <PencilSquareIcon className="h-4 w-4" />
+              <PencilSquareIcon className="h-3 w-3 sm:h-4 sm:w-4" />
             </button>
           )}
           {onLessonDelete && (
@@ -293,10 +310,10 @@ function LessonChip({
                 event.stopPropagation();
                 onLessonDelete(lesson);
               }}
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-red-600 shadow ring-1 ring-red-200 hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+              className="flex h-5 w-5 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-white/90 text-red-600 shadow ring-1 ring-red-200 hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
               title="Delete lesson"
             >
-              <TrashIcon className="h-4 w-4" />
+              <TrashIcon className="h-3 w-3 sm:h-4 sm:w-4" />
             </button>
           )}
         </div>
@@ -312,10 +329,11 @@ function resolveLessonDate(lesson: LessonOut): Date | null {
   if (lesson.year && lesson.month && lesson.week_number) {
     const weeks = getWeeksForMonth(lesson.year, lesson.month);
     const week = weeks.find((w) => w.weekNumber === lesson.week_number);
-    if (!week) return null;
-    const base = new Date(week.startDate);
-    base.setHours(0, 0, 0, 0);
-    return addDays(base, dayIndex);
+    if (week) {
+      const base = new Date(week.startDate);
+      base.setHours(0, 0, 0, 0);
+      return addDays(base, dayIndex);
+    }
   }
 
   if (lesson.week) {
@@ -332,8 +350,18 @@ function resolveLessonDate(lesson: LessonOut): Date | null {
 
 function getDayIndex(day: string | undefined): number | null {
   if (!day) return null;
-  const index = DAY_NAME_MAP[day];
-  return typeof index === "number" ? index : null;
+  const directIndex = DAY_NAME_MAP[day];
+  if (typeof directIndex === "number") {
+    return directIndex;
+  }
+
+  const aliasKey = day.trim().toLowerCase();
+  const normalized = DAY_ALIASES[aliasKey];
+  if (normalized) {
+    return DAY_NAME_MAP[normalized];
+  }
+
+  return null;
 }
 
 

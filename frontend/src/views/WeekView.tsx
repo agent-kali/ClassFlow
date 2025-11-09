@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { api, auth } from '@/api/client';
 import type { LessonOut, LessonCreate, LessonUpdate, Teacher } from '@/api/types';
-import { setAcademicAnchor, getWeekNumber } from '@/lib/time';
-import { getWeeksForMonth, getWeekForDate } from '@/lib/monthWeeks';
+import { setAcademicAnchor, getWeekNumber, getWeekStart } from '@/lib/time';
+import { getWeekForDate, getWeeksForMonth, getAdjacentMonth } from '@/lib/monthWeeks';
 import PeriodGrid from '@/components/PeriodGrid';
 import { useSearchParams, Link } from 'react-router-dom';
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import {
   Bars3Icon,
   CalendarIcon,
@@ -33,6 +33,9 @@ type FeedbackState = {
   message: string;
 };
 
+const MIN_WEEK = 1;
+// Remove MAX_WEEK limit to allow navigation beyond current academic period
+
 const DAYS: Array<"Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun"> = [
   "Mon",
   "Tue", 
@@ -44,37 +47,46 @@ const DAYS: Array<"Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun"> = [
 ];
 
 export const WeekView: React.FC = () => {
-  const [lessons, setLessons] = React.useState<LessonOut[]>([]);
-  const [error, setError] = React.useState<string | null>(null);
-  const [isMenuOpen, setIsMenuOpen] = React.useState<boolean>(false);
-  const [isHeaderVisible, setIsHeaderVisible] = React.useState<boolean>(true);
-  const [lastScrollY, setLastScrollY] = React.useState<number>(0);
-  const [teachers, setTeachers] = React.useState<Teacher[]>([]);
-  const [isEditMode, setIsEditMode] = React.useState<boolean>(false);
-  const [isModalOpen, setIsModalOpen] = React.useState<boolean>(false);
-  const [selectedSlot, setSelectedSlot] = React.useState<SlotSelection | null>(null);
-  const [editingLesson, setEditingLesson] = React.useState<LessonOut | null>(null);
-  const [lessonToDelete, setLessonToDelete] = React.useState<LessonOut | null>(null);
-  const [isDeleting, setIsDeleting] = React.useState<boolean>(false);
-  const [feedback, setFeedback] = React.useState<FeedbackState | null>(null);
-  const [isSaving, setIsSaving] = React.useState<boolean>(false);
-  const [isTeacherPaletteOpen, setIsTeacherPaletteOpen] = React.useState<boolean>(false);
-  const [teacherSearch, setTeacherSearch] = React.useState<string>('');
+  const [lessons, setLessons] = useState<LessonOut[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+  const [isHeaderVisible, setIsHeaderVisible] = useState<boolean>(true);
+  const [lastScrollY, setLastScrollY] = useState<number>(0);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [selectedSlot, setSelectedSlot] = useState<SlotSelection | null>(null);
+  const [editingLesson, setEditingLesson] = useState<LessonOut | null>(null);
+  const [lessonToDelete, setLessonToDelete] = useState<LessonOut | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isTeacherPaletteOpen, setIsTeacherPaletteOpen] = useState<boolean>(false);
+  const [teacherSearch, setTeacherSearch] = useState<string>('');
   const [params, setParams] = useSearchParams();
   const teacherId = Number(params.get('teacher') || '1');
-  const initialDate = React.useMemo(() => new Date(), []);
-  const [viewDate, setViewDate] = React.useState<Date>(initialDate);
+  const [weekNumber, setWeekNumberState] = useState<number | null>(null);
+  const [anchorLoaded, setAnchorLoaded] = useState<boolean>(false);
   const grouped = true;
-  const canEdit = React.useMemo(() => auth.hasAnyRole(['manager', 'admin']), []);
+  const canEdit = useMemo(() => auth.hasAnyRole(['manager', 'admin']), []);
   const showAllTeachers = params.get('all') === 'true' && canEdit; // Only managers/admins can see all teachers
-  const teacherSelectorRef = React.useRef<HTMLDivElement | null>(null);
-  const menuRef = React.useRef<HTMLDivElement | null>(null);
+  const teacherSelectorRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   // Fetch calendar anchor and teachers once
   React.useEffect(() => {
     api.getAnchor()
-      .then(({ anchor_date }) => setAcademicAnchor(anchor_date))
-      .catch(() => {});
+      .then(({ anchor_date }) => {
+        setAcademicAnchor(anchor_date);
+        setAnchorLoaded(true);
+        // Set current week number after anchor is loaded
+        setWeekNumberState(getWeekNumber(new Date()));
+      })
+      .catch(() => {
+        // Even if API fails, set anchor loaded to use fallback
+        setAnchorLoaded(true);
+        setWeekNumberState(getWeekNumber(new Date()));
+      });
     
     // Load teachers for the selector (only for managers/admins)
     if (canEdit) {
@@ -84,8 +96,46 @@ export const WeekView: React.FC = () => {
     }
   }, [canEdit]);
 
-  const fetchLessons = React.useCallback(() => {
-    const weekNumber = getWeekNumber(viewDate);
+  const fetchLessons = useCallback(() => {
+    // Don't fetch lessons until anchor is loaded and weekNumber is set
+    if (!anchorLoaded || weekNumber === null) {
+      return;
+    }
+    
+    const effectiveWeek = Math.max(MIN_WEEK, weekNumber);
+    
+    // For extended weeks (beyond academic period), use month-based parameters
+    const weekStart = getWeekStart(effectiveWeek);
+    // For week 7 (Oct 13-19), we need to look at Oct 13, not Oct 12
+    const targetDate = effectiveWeek >= 7 ? addDays(weekStart, 1) : weekStart;
+    const weekInfo = getWeekForDate(targetDate);
+    
+    console.log('WeekView debug:', { 
+      effectiveWeek, 
+      weekStart: weekStart.toISOString(), 
+      targetDate: targetDate.toISOString(),
+      weekStartMonth: weekStart.getMonth() + 1,
+      weekStartYear: weekStart.getFullYear(),
+      weekInfo: weekInfo ? {
+        weekNumber: weekInfo.weekNumber,
+        month: weekInfo.month,
+        year: weekInfo.year,
+        startDate: weekInfo.startDate,
+        endDate: weekInfo.endDate
+      } : null
+    });
+    
+    const apiParams = weekInfo ? {
+      month: weekInfo.month,
+      year: weekInfo.year,
+      week_number: weekInfo.weekNumber,
+      grouped
+    } : {
+      week: effectiveWeek,
+      grouped
+    };
+    
+    console.log('WeekView API params:', { effectiveWeek, weekInfo, apiParams });
     
     // For teachers: always fetch their own schedule, ignore URL parameters
     if (!canEdit) {
@@ -94,7 +144,7 @@ export const WeekView: React.FC = () => {
       const userTeacherId = currentUser?.teacher_id;
       
       if (userTeacherId) {
-        api.getTeacherSchedule(userTeacherId, { week: weekNumber, grouped })
+        api.getTeacherSchedule(userTeacherId, apiParams)
           .then((data) => {
             setLessons(data);
             setError(null);
@@ -108,8 +158,8 @@ export const WeekView: React.FC = () => {
     
     // For managers/admins: use the existing logic
     const fetchPromise = showAllTeachers
-      ? api.listLessons({ week: weekNumber, grouped })
-      : api.getTeacherSchedule(teacherId, { week: weekNumber, grouped });
+      ? api.listLessons(apiParams)
+      : api.getTeacherSchedule(teacherId, apiParams);
 
     fetchPromise
       .then((data) => {
@@ -117,7 +167,7 @@ export const WeekView: React.FC = () => {
         setError(null);
       })
       .catch((e) => setError(String(e)));
-  }, [grouped, showAllTeachers, teacherId, viewDate, canEdit]);
+  }, [grouped, showAllTeachers, teacherId, weekNumber, canEdit, anchorLoaded]);
 
   React.useEffect(() => {
     fetchLessons();
@@ -178,15 +228,21 @@ export const WeekView: React.FC = () => {
   }, [lastScrollY]);
 
   const weekStart = React.useMemo(() => {
-    const year = viewDate.getFullYear();
-    const month = viewDate.getMonth() + 1;
-    const weeks = getWeeksForMonth(year, month);
-    const current = getWeekForDate(viewDate);
-    const match = current ? weeks.find(w => w.weekNumber === current.weekNumber) : weeks[0];
-    return match ? match.startDate : viewDate;
-  }, [viewDate]);
+    if (weekNumber === null) {
+      // Return Monday of current week as fallback until weekNumber is set
+      const today = new Date();
+      const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // If Sunday, go back 6 days; otherwise go back to Monday
+      const monday = new Date(today);
+      monday.setDate(today.getDate() + daysToMonday);
+      monday.setHours(0, 0, 0, 0);
+      return monday;
+    }
+    const normalizedWeek = Math.max(MIN_WEEK, weekNumber);
+    return getWeekStart(normalizedWeek);
+  }, [weekNumber]);
 
-  const weekInfo = React.useMemo(() => getWeekForDate(viewDate), [viewDate]);
+  const weekInfo = React.useMemo(() => getWeekForDate(weekStart), [weekStart]);
 
   const dayNameMap: Record<SlotSelection['day'], string> = {
     Mon: 'Monday',
@@ -198,18 +254,18 @@ export const WeekView: React.FC = () => {
     Sun: 'Sunday',
   };
 
-  const weekEnd = React.useMemo(() => {
-    const end = new Date(weekStart);
-    end.setDate(weekStart.getDate() + 6);
-    return end;
-  }, [weekStart]);
+  const weekEnd = React.useMemo(() => addDays(weekStart, 6), [weekStart]);
 
-  const navigateWeek = (direction: 'prev' | 'next') => {
-    const deltaDays = direction === 'prev' ? -7 : 7;
-    const d = new Date(viewDate);
-    d.setDate(d.getDate() + deltaDays);
-    setViewDate(d);
-  };
+  const navigateWeek = useCallback((direction: 'prev' | 'next') => {
+    setWeekNumberState((prev) => {
+      if (prev === null) {
+        // If weekNumber is not set yet, initialize with current week
+        return getWeekNumber(new Date());
+      }
+      const next = direction === 'prev' ? prev - 1 : prev + 1;
+      return Math.max(MIN_WEEK, next);
+    });
+  }, []);
 
   const handleTeacherChange = (newTeacherId: number | 'all') => {
     const newParams = new URLSearchParams(params);
@@ -643,9 +699,10 @@ export const WeekView: React.FC = () => {
                 </h1>
                 <p className="text-sm text-gray-500 font-medium">
                   {(() => {
-                    const w = getWeekForDate(viewDate);
-                    const monthName = format(viewDate, 'MMM');
-                    return w ? `Week ${w.weekNumber}` : `${monthName}`;
+                    const monthWeek = weekInfo?.weekNumber;
+                    const monthLabel = format(weekStart, 'MMM yyyy');
+                    if (monthWeek) return `Week ${monthWeek} (${monthLabel})`;
+                    return monthLabel;
                   })()}
                 </p>
               </div>
@@ -712,16 +769,65 @@ export const WeekView: React.FC = () => {
           </div>
         )}
 
-        <PeriodGrid
-          weekStartISO={weekStart.toISOString()}
-          lessons={lessons}
-          dayStart="17:00"
-          dayEnd="21:00"
-          isEditMode={isEditMode && canEdit}
-          onSlotClick={handleSlotClick}
-          onLessonEdit={handleLessonEdit}
-          onLessonDelete={handleLessonDelete}
-        />
+        {(() => {
+          const fallbackStart = '05:00';
+          const fallbackEnd = '22:00';
+
+          const toMinutes = (t: string) => {
+            const [h, m] = t.split(':').map(Number);
+            return h * 60 + m;
+          };
+          const toHHMM = (m: number) => {
+            const hh = Math.max(0, Math.min(23, Math.floor(m / 60)));
+            const mm = Math.max(0, Math.min(59, m % 60));
+            return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+          };
+
+          if (!lessons || lessons.length === 0) {
+            return (
+              <PeriodGrid
+                weekStartISO={weekStart.toISOString()}
+                lessons={lessons}
+                dayStart={fallbackStart}
+                dayEnd={fallbackEnd}
+                isEditMode={isEditMode && canEdit}
+                onSlotClick={handleSlotClick}
+                onLessonEdit={handleLessonEdit}
+                onLessonDelete={handleLessonDelete}
+              />
+            );
+          }
+
+          let minStart = Infinity;
+          let maxEnd = -Infinity;
+          for (const l of lessons) {
+            if (l.start_time) minStart = Math.min(minStart, toMinutes(l.start_time));
+            if (l.end_time) maxEnd = Math.max(maxEnd, toMinutes(l.end_time));
+          }
+          if (!isFinite(minStart) || !isFinite(maxEnd)) {
+            minStart = toMinutes(fallbackStart);
+            maxEnd = toMinutes(fallbackEnd);
+          }
+          // add a small padding window
+          minStart = Math.max(0, minStart - 30);
+          maxEnd = Math.min(23 * 60 + 59, maxEnd + 30);
+
+          const computedStart = toHHMM(minStart);
+          const computedEnd = toHHMM(maxEnd);
+
+          return (
+            <PeriodGrid
+              weekStartISO={weekStart.toISOString()}
+              lessons={lessons}
+              dayStart={computedStart}
+              dayEnd={computedEnd}
+              isEditMode={isEditMode && canEdit}
+              onSlotClick={handleSlotClick}
+              onLessonEdit={handleLessonEdit}
+              onLessonDelete={handleLessonDelete}
+            />
+          );
+        })()}
       </div>
 
       <LessonModal
@@ -729,7 +835,7 @@ export const WeekView: React.FC = () => {
         onClose={closeModal}
         onSave={handleSaveLesson}
         lesson={editingLesson}
-        defaultWeek={weekInfo?.weekNumber ?? getWeekNumber(viewDate)}
+        defaultWeek={weekInfo?.weekNumber ?? weekNumber ?? 1}
         defaultDay={defaultDayName || 'Monday'}
         defaultMonth={weekInfo?.month}
         defaultYear={weekInfo?.year}

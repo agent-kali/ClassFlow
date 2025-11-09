@@ -78,11 +78,6 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
                 </Link>
               )}
               {user && ['manager', 'admin'].includes(user.role) && (
-                <Link to="/calendar" className={navLinkClass('/calendar')}>
-                  Visual Editor
-                </Link>
-              )}
-              {user && ['manager', 'admin'].includes(user.role) && (
                 <Link to="/resources" className={navLinkClass('/resources')}>
                   Resources
                 </Link>
@@ -157,11 +152,6 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
               {user && ['manager', 'admin'].includes(user.role) && (
                 <Link to="/manage" className={mobileNavLinkClass('/manage')} onClick={closeMobileMenu}>
                   Manage Schedule
-                </Link>
-              )}
-              {user && ['manager', 'admin'].includes(user.role) && (
-                <Link to="/calendar" className={mobileNavLinkClass('/calendar')} onClick={closeMobileMenu}>
-                  Visual Editor
                 </Link>
               )}
               {user && ['manager', 'admin'].includes(user.role) && (

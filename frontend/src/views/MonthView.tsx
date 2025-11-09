@@ -115,6 +115,9 @@ export const MonthView: React.FC = () => {
 
     fetchPromise
       .then((data) => {
+        if (Array.isArray(data)) {
+          (window as any).__LESSON_DATA__ = data;
+        }
         setLessons(data);
         setError(null);
       })
@@ -385,25 +388,25 @@ export const MonthView: React.FC = () => {
         }`}
       >
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-12">
-            <div className="flex items-center space-x-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 sm:py-0 sm:h-12">
+            <div className="flex items-center space-x-2 sm:space-x-4">
               {canEdit ? (
                 <div className="relative" ref={teacherSelectorRef}>
                   <button
                     onClick={() => setIsTeacherPaletteOpen((prev) => !prev)}
-                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:border-orange-400 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 transition-all"
+                    className="inline-flex items-center gap-2 px-2 sm:px-3 py-2 text-xs sm:text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:border-orange-400 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 transition-all"
                   >
-                    <div className="flex flex-col items-start leading-tight">
+                    <div className="flex flex-col items-start leading-tight min-w-0">
                       <span className="text-xs uppercase tracking-wide text-gray-400">Teacher</span>
-                      <span className="font-semibold text-gray-900">
+                      <span className="font-semibold text-gray-900 truncate max-w-[120px] sm:max-w-none">
                         {showAllTeachers ? "All Teachers" : currentTeacherName}
                       </span>
                     </div>
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-100 text-orange-600 font-semibold">
+                    <span className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-orange-100 text-orange-600 font-semibold text-xs sm:text-sm flex-shrink-0">
                       {showAllTeachers ? "ALL" : `T${teacherId}`}
                     </span>
                     <ChevronDownIcon
-                      className={`h-4 w-4 transition-transform ${
+                      className={`h-3 w-3 sm:h-4 sm:w-4 transition-transform flex-shrink-0 ${
                         isTeacherPaletteOpen ? "rotate-180 text-orange-500" : "text-gray-400"
                       }`}
                     />
@@ -595,57 +598,58 @@ export const MonthView: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center justify-between sm:justify-end space-x-2 sm:space-x-3">
               {canEdit && (
                 <button
                   onClick={toggleEditMode}
-                  className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                  className={`inline-flex items-center gap-1 sm:gap-2 rounded-lg border px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold transition-colors ${
                     isEditMode
                       ? "border-orange-500 bg-orange-500 text-white hover:bg-orange-600"
                       : "border-gray-300 bg-white text-gray-700 hover:bg-gray-100"
                   }`}
                 >
-                  <PencilSquareIcon className="h-4 w-4" />
-                  {isEditMode ? "Exit Edit Mode" : "Edit Mode"}
+                  <PencilSquareIcon className="h-3 w-3 sm:h-4 sm:w-4" />
+                  <span className="hidden sm:inline">{isEditMode ? "Exit Edit Mode" : "Edit Mode"}</span>
+                  <span className="sm:hidden">{isEditMode ? "Exit" : "Edit"}</span>
                 </button>
               )}
-              <div className="text-right">
-                <p className="text-sm font-semibold text-gray-900">
+              <div className="text-right min-w-0 flex-1 sm:flex-none">
+                <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">
                   {showAllTeachers ? "All Teachers" : currentTeacherName}
                 </p>
                 <p className="text-xs text-gray-500 font-medium">Monthly Schedule</p>
               </div>
-              <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-                <span className="text-sm font-semibold text-orange-700">
+              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <span className="text-xs sm:text-sm font-semibold text-orange-700">
                   {showAllTeachers ? "ALL" : `T${teacherId}`}
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-center h-12 border-t border-gray-100">
-            <div className="flex items-center space-x-6">
+          <div className="flex items-center justify-center py-3 sm:py-0 sm:h-12 border-t border-gray-100">
+            <div className="flex items-center space-x-3 sm:space-x-6">
               <button
                 onClick={() => navigateMonth("prev")}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-1.5 sm:p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <ChevronLeftIcon className="w-5 h-5" />
+                <ChevronLeftIcon className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
 
               <div className="text-center min-w-0 flex-1">
-                <h1 className="text-lg font-semibold text-gray-900 truncate">
+                <h1 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
                   {format(viewDate, "MMMM yyyy")}
                 </h1>
-                <p className="text-sm text-gray-500 font-medium">
+                <p className="text-xs sm:text-sm text-gray-500 font-medium">
                   {monthWeeks.length} week{monthWeeks.length === 1 ? "" : "s"}
                 </p>
               </div>
 
               <button
                 onClick={() => navigateMonth("next")}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-1.5 sm:p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <ChevronRightIcon className="w-5 h-5" />
+                <ChevronRightIcon className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </div>
           </div>
@@ -665,10 +669,10 @@ export const MonthView: React.FC = () => {
         </div>
       )}
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
+      <div className="mx-auto max-w-7xl px-2 sm:px-4 lg:px-8 py-3 sm:py-6">
         {isEditMode && canEdit && (
-          <div className="mb-4 flex items-center gap-3 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
-            <PencilSquareIcon className="h-5 w-5" />
+          <div className="mb-3 sm:mb-4 flex items-start gap-2 sm:gap-3 rounded-lg border border-orange-200 bg-orange-50 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-orange-800">
+            <PencilSquareIcon className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0 mt-0.5" />
             <span>
               Edit mode active. Click the <span className="font-semibold">+</span> button in any day to add a lesson,
               or use the edit/delete buttons on existing lessons.
@@ -678,21 +682,21 @@ export const MonthView: React.FC = () => {
 
         {feedback && (
           <div
-            className={`mb-4 flex items-center gap-3 rounded-lg border px-4 py-3 text-sm ${
+            className={`mb-3 sm:mb-4 flex items-start gap-2 sm:gap-3 rounded-lg border px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm ${
               feedback.type === "success"
                 ? "border-green-200 bg-green-50 text-green-800"
                 : "border-red-200 bg-red-50 text-red-700"
             }`}
           >
             {feedback.type === "success" ? (
-              <CheckCircleIcon className="h-5 w-5" />
+              <CheckCircleIcon className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0 mt-0.5" />
             ) : (
-              <XCircleIcon className="h-5 w-5" />
+              <XCircleIcon className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0 mt-0.5" />
             )}
-            <span>{feedback.message}</span>
+            <span className="flex-1">{feedback.message}</span>
             <button
               type="button"
-              className="ml-auto text-xs font-medium underline"
+              className="text-xs font-medium underline flex-shrink-0"
               onClick={() => setFeedback(null)}
             >
               Dismiss
@@ -824,6 +828,13 @@ function TeacherOption({ teacher, isActive, onSelect, badge, accent }: TeacherOp
 }
 
 export default MonthView;
+
+
+
+
+
+
+
 
 
 

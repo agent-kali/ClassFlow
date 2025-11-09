@@ -112,7 +112,7 @@ const AdminPanel: React.FC = () => {
           <h1 className="text-3xl font-bold text-gray-900">Admin Panel</h1>
           <button
             onClick={() => setShowCreateForm(true)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg text-sm font-semibold shadow-lg hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-indigo-100 transition-all duration-200 transform hover:-translate-y-0.5"
           >
             Create User
           </button>
@@ -126,48 +126,51 @@ const AdminPanel: React.FC = () => {
 
         {/* User Creation/Edit Form */}
         {showCreateForm && (
-          <div className="bg-white shadow rounded-lg p-6 mb-6">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">
+          <div className="bg-white shadow-xl rounded-2xl p-8 mb-8 border border-gray-100">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6 pb-2 border-b border-gray-200">
               {editingUser ? 'Edit User' : 'Create New User'}
             </h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Username</label>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">Username</label>
                   <input
                     type="text"
                     required
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-lg text-gray-900 placeholder-gray-500 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 focus:outline-none transition-all duration-200 hover:border-gray-300 shadow-sm"
                     value={formData.username}
                     onChange={(e) => setFormData({...formData, username: e.target.value})}
+                    placeholder="Enter username"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Email</label>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">Email</label>
                   <input
                     type="email"
                     required
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-lg text-gray-900 placeholder-gray-500 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 focus:outline-none transition-all duration-200 hover:border-gray-300 shadow-sm"
                     value={formData.email}
                     onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    placeholder="Enter email address"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Password {editingUser && '(leave blank to keep current)'}
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">
+                    Password {editingUser && <span className="text-gray-500 font-normal">(leave blank to keep current)</span>}
                   </label>
                   <input
                     type="password"
                     required={!editingUser}
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-lg text-gray-900 placeholder-gray-500 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 focus:outline-none transition-all duration-200 hover:border-gray-300 shadow-sm"
                     value={formData.password}
                     onChange={(e) => setFormData({...formData, password: e.target.value})}
+                    placeholder={editingUser ? "Enter new password" : "Enter password"}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Role</label>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">Role</label>
                   <select
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-lg text-gray-900 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 focus:outline-none transition-all duration-200 hover:border-gray-300 shadow-sm cursor-pointer"
                     value={formData.role}
                     onChange={(e) => setFormData({...formData, role: e.target.value as UserRole})}
                   >
@@ -177,9 +180,9 @@ const AdminPanel: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Linked Teacher (Optional)</label>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">Linked Teacher <span className="text-gray-500 font-normal">(Optional)</span></label>
                   <select
-                    className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-lg text-gray-900 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 focus:outline-none transition-all duration-200 hover:border-gray-300 shadow-sm cursor-pointer"
                     value={formData.teacher_id || ''}
                     onChange={(e) => setFormData({...formData, teacher_id: e.target.value ? Number(e.target.value) : null})}
                   >
@@ -192,19 +195,19 @@ const AdminPanel: React.FC = () => {
                   </select>
                 </div>
               </div>
-              <div className="flex justify-end space-x-3">
+              <div className="flex justify-end space-x-4 pt-4 border-t border-gray-200">
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="px-6 py-3 border-2 border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-4 focus:ring-gray-100 transition-all duration-200"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-indigo-100 transition-all duration-200 transform hover:-translate-y-0.5"
                 >
-                  {editingUser ? 'Update' : 'Create'}
+                  {editingUser ? 'Update User' : 'Create User'}
                 </button>
               </div>
             </form>

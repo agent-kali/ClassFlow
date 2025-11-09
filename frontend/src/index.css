@@ -471,3 +471,59 @@ body {
 
 
 
+
+/* Shared modal + form design system */
+@layer components {
+  /* Modal surface */
+  .modal-surface {
+    @apply relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl ring-1 ring-gray-200;
+  }
+
+  /* Backdrop (slight blur for modern look) */
+  .modal-backdrop {
+    @apply fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity;
+  }
+
+  /* Form pieces */
+  .form-label {
+    @apply block text-xs font-semibold uppercase tracking-wide text-gray-600;
+  }
+
+  .form-control {
+    @apply w-full h-10 px-3 border rounded-lg text-sm bg-white text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors;
+  }
+
+  .form-control-success {
+    @apply border-orange-300 bg-orange-50 text-orange-900;
+  }
+
+  .form-control-error {
+    @apply border-red-400 bg-red-50;
+  }
+
+  .dropdown-panel {
+    @apply absolute z-20 w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-lg max-h-56 overflow-auto;
+  }
+
+  /* Unified select style with custom chevron */
+  .select-control {
+    @apply form-control appearance-none pr-9; /* space for chevron */
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='rgb(100,116,139)'%3e%3cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center; /* chevron position */
+    background-size: 1rem 1rem;
+  }
+}
+
+/* Fix Safari/Chrome autofill turning inputs grey/yellow */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+select:-webkit-autofill,
+textarea:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset;
+  box-shadow: 0 0 0px 1000px #ffffff inset;
+  -webkit-text-fill-color: #111827;
+  transition: background-color 5000s ease-in-out 0s;
+}
+

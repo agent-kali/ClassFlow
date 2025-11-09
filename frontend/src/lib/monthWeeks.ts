@@ -45,36 +45,33 @@ export function getFirstMondayOfMonth(year: number, month: number): Date {
 export function getWeeksForMonth(year: number, month: number): MonthWeek[] {
   const weeks: MonthWeek[] = [];
   const firstMonday = getFirstMondayOfMonth(year, month);
-  
+
   let currentWeekStart = new Date(firstMonday);
   let weekNumber = 1;
-  
-  // Continue until we're past the month
+
   while (currentWeekStart.getMonth() === month - 1) {
     const weekEnd = new Date(currentWeekStart);
-    weekEnd.setDate(weekEnd.getDate() + 6); // Sunday
-    
-    // Only include weeks that have at least one day in the current month
+    weekEnd.setDate(weekEnd.getDate() + 6);
+
     if (currentWeekStart.getMonth() === month - 1 || weekEnd.getMonth() === month - 1) {
-      const monthName = new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'short' });
+      const monthName = new Date(year, month - 1, 1).toLocaleDateString("en-US", { month: "short" });
       const startDay = currentWeekStart.getDate();
       const endDay = weekEnd.getDate();
-      
+
       weeks.push({
         weekNumber,
         startDate: new Date(currentWeekStart),
         endDate: new Date(weekEnd),
         month,
         year,
-        displayName: `Week ${weekNumber} (${monthName} ${startDay}-${endDay})`
+        displayName: `Week ${weekNumber} (${monthName} ${startDay}-${endDay})`,
       });
     }
-    
-    // Move to next week
+
     currentWeekStart.setDate(currentWeekStart.getDate() + 7);
     weekNumber++;
   }
-  
+
   return weeks;
 }
 
@@ -181,8 +178,8 @@ export function isDateInMonthWeek(date: Date, year: number, month: number, weekN
 /**
  * Get next/previous month with year rollover
  */
-export function getAdjacentMonth(year: number, month: number, direction: 'next' | 'prev'): { year: number; month: number } {
-  if (direction === 'next') {
+export function getAdjacentMonth(year: number, month: number, direction: "next" | "prev"): { year: number; month: number } {
+  if (direction === "next") {
     if (month === 12) {
       return { year: year + 1, month: 1 };
     } else {

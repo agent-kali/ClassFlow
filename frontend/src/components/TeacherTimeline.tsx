@@ -4,7 +4,8 @@ import type { LessonOut, Teacher } from '../api/types';
 import LessonCard from './LessonCard';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { format, addDays } from 'date-fns';
-import { getWeekStart, setAcademicAnchor } from '../lib/time';
+import { getWeekStart, setAcademicAnchor, getWeekNumber } from '../lib/time';
+import { getWeekForDate } from '../lib/monthWeeks';
 
 const dayOptions = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const dayOrder: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
@@ -14,6 +15,10 @@ type Filters = {
   day?: string;
   campus?: string;
   grouped?: boolean;
+  // Month-based week parameters
+  month?: number;
+  year?: number;
+  week_number?: number;
 };
 
 export const TeacherTimeline: React.FC = () => {
@@ -22,7 +27,8 @@ export const TeacherTimeline: React.FC = () => {
     const saved = localStorage.getItem('selectedTeacherId');
     return saved ? Number(saved) : undefined;
   });
-  const [week, setWeek] = React.useState<number | undefined>(3);
+  const [week, setWeek] = React.useState<number | undefined>(undefined);
+  const [anchorLoaded, setAnchorLoaded] = React.useState<boolean>(false);
   const [day, setDay] = React.useState<string>('Mon');
   const [campus, setCampus] = React.useState<string | undefined>(undefined);
   const [grouped, setGrouped] = React.useState<boolean>(true);
@@ -55,20 +61,93 @@ export const TeacherTimeline: React.FC = () => {
   // Fetch calendar anchor once
   React.useEffect(() => {
     api.getAnchor()
-      .then(({ anchor_date }) => setAcademicAnchor(anchor_date))
-      .catch((err) => console.warn('Failed to fetch calendar anchor:', err));
+      .then(({ anchor_date }) => {
+        setAcademicAnchor(anchor_date);
+        setAnchorLoaded(true);
+        setWeek(getWeekNumber(new Date()));
+      })
+      .catch((err) => {
+        console.warn('Failed to fetch calendar anchor:', err);
+        setAnchorLoaded(true);
+        setWeek(getWeekNumber(new Date()));
+      });
   }, []);
 
   async function load() {
     if (selectedTeacherId === undefined) return;
+    if (!anchorLoaded || week === undefined) return;
     setLoading(true);
     setError(null);
     setLessons(null);
-    const filters: Filters = { week, day, campus, grouped };
+    
+    // For extended weeks (beyond academic period), use month-based parameters
+    const weekStart = getWeekStart(week);
+    // For week 7+ (Oct 13-19), we need to look at the Monday, not the Sunday
+    const targetDate = week && week >= 7 ? addDays(weekStart, 1) : weekStart;
+    const weekInfo = getWeekForDate(targetDate);
+    
+    console.log('TeacherTimeline debug:', { 
+      week, 
+      weekStart: weekStart.toISOString(), 
+      targetDate: targetDate.toISOString(),
+      weekStartMonth: weekStart.getMonth() + 1,
+      weekStartYear: weekStart.getFullYear(),
+      weekInfo: weekInfo ? {
+        weekNumber: weekInfo.weekNumber,
+        month: weekInfo.month,
+        year: weekInfo.year,
+        startDate: weekInfo.startDate,
+        endDate: weekInfo.endDate
+      } : null
+    });
+    
+    // For Week 7, let's also test what the database should return
+    if (week === 7 && weekInfo) {
+      console.log('🔍 Week 7 Debug - Database should have lessons for:', {
+        month: weekInfo.month,
+        year: weekInfo.year,
+        week_number: weekInfo.weekNumber
+      });
+    }
+    
+    const filters: Filters = weekInfo ? {
+      month: weekInfo.month,
+      year: weekInfo.year,
+      week_number: weekInfo.weekNumber,
+      day,
+      campus,
+      grouped
+    } : {
+      week,
+      day,
+      campus,
+      grouped
+    };
+    
+    console.log('TeacherTimeline API params:', { 
+      week, 
+      weekInfo: weekInfo ? {
+        weekNumber: weekInfo.weekNumber,
+        month: weekInfo.month,
+        year: weekInfo.year
+      } : null, 
+      filters: {
+        month: filters.month,
+        year: filters.year,
+        week_number: filters.week_number,
+        week: filters.week,
+        day: filters.day,
+        campus: filters.campus,
+        grouped: filters.grouped
+      }
+    });
+    
     try {
       const data = await api.getTeacherSchedule(selectedTeacherId, filters);
+      console.log('API response for week', week, ':', data);
       setLessons(data);
     } catch (e: any) {
+      console.error('API error for week', week, ':', e);
       setError(e?.message || String(e));
     } finally {
       setLoading(false);
@@ -81,17 +160,37 @@ export const TeacherTimeline: React.FC = () => {
       load();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTeacherId, week, day, campus, grouped]);
+  }, [selectedTeacherId, week, day, campus, grouped, anchorLoaded]);
 
   // Fetch weekly overview (for day badges/state) whenever teacher/week changes
   React.useEffect(() => {
     if (selectedTeacherId === undefined) return;
+    if (!anchorLoaded || week === undefined) return;
+    
+    // For extended weeks (beyond academic period), use month-based parameters
+    const weekStart = getWeekStart(week);
+    // For week 7+ (Oct 13-19), we need to look at the Monday, not the Sunday
+    const targetDate = week >= 7 ? addDays(weekStart, 1) : weekStart;
+    const weekInfo = getWeekForDate(targetDate);
+    
+    const overviewFilters = weekInfo ? {
+      month: weekInfo.month,
+      year: weekInfo.year,
+      week_number: weekInfo.weekNumber,
+      campus,
+      grouped
+    } : {
+      week,
+      campus,
+      grouped
+    };
+    
     api
-      .getTeacherSchedule(selectedTeacherId, { week, campus, grouped })
+      .getTeacherSchedule(selectedTeacherId, overviewFilters)
       .then(setWeekly)
       .catch(() => setWeekly(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTeacherId, week, campus, grouped]);
+  }, [selectedTeacherId, week, campus, grouped, anchorLoaded]);
 
   const toMinutes = (t: string) => {
     const [h, m] = t.split(':').map(Number);
@@ -110,12 +209,30 @@ export const TeacherTimeline: React.FC = () => {
     return `${format(weekStart, 'dd/MM')} - ${format(weekEnd, 'dd/MM')}`;
   };
 
-  const getDayDate = (weekNum: number, dayName: string): string => {
+  const getDayDate = (weekNum: number | undefined, dayName: string): string => {
+    if (weekNum === undefined || !anchorLoaded) {
+      // Fallback: use current calendar week based on today's date
+      const today = new Date();
+      const dayOfWeek = today.getDay(); // 0 = Sunday
+      const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const monday = new Date(today);
+      monday.setDate(today.getDate() + daysToMonday);
+      const dayIndex = dayOptions.indexOf(dayName);
+      const dayDate = addDays(monday, dayIndex);
+      return format(dayDate, 'do MMM');
+    }
     const weekStart = getWeekStart(weekNum);
     const dayIndex = dayOptions.indexOf(dayName);
     const dayDate = addDays(weekStart, dayIndex);
     return format(dayDate, 'do MMM'); // e.g., "13th Oct"
   };
+
+  const monthWeekInfo = React.useMemo(() => {
+    if (!anchorLoaded || week === undefined) return null;
+    const weekStart = getWeekStart(week);
+    const targetDate = week >= 7 ? addDays(weekStart, 1) : weekStart;
+    return getWeekForDate(targetDate);
+  }, [anchorLoaded, week]);
 
   const isNowSlot = (l: LessonOut) => {
     if (day !== todayDay()) return false;
@@ -334,8 +451,14 @@ export const TeacherTimeline: React.FC = () => {
 
           <div className="flex items-center justify-center gap-3">
             <button
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition hover:border-orange-300 hover:text-orange-600"
-              onClick={() => setWeek((w) => (w && w > 1 ? w - 1 : 1))}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition hover:border-orange-300 hover:text-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
+              onClick={() => setWeek((w) => {
+                if (w === undefined) {
+                  return getWeekNumber(new Date());
+                }
+                return w > 1 ? w - 1 : 1;
+              })}
+              disabled={!anchorLoaded}
               aria-label="Previous week"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -343,11 +466,23 @@ export const TeacherTimeline: React.FC = () => {
               </svg>
             </button>
             <div className="rounded-full border border-gray-200 bg-white px-5 py-1.5 text-sm font-semibold text-gray-800">
-              Week {week} | {getWeekDateRange(week || 1)}
+              {anchorLoaded && week !== undefined && monthWeekInfo
+                ? (
+                  <>
+                    Week {monthWeekInfo.weekNumber} | {getWeekDateRange(week)}
+                  </>
+                )
+                : 'Loading current week…'}
             </div>
             <button
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition hover:border-orange-300 hover:text-orange-600"
-              onClick={() => setWeek((w) => (w ? Math.min(w + 1, 5) : 1))}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition hover:border-orange-300 hover:text-orange-600 disabled:opacity-40 disabled:cursor-not-allowed"
+              onClick={() => setWeek((w) => {
+                if (w === undefined) {
+                  return getWeekNumber(new Date());
+                }
+                return w + 1;
+              })}
+              disabled={!anchorLoaded}
               aria-label="Next week"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -443,12 +578,14 @@ export const TeacherTimeline: React.FC = () => {
             <div className="border-b border-orange-200 pb-3">
               <div className="flex items-baseline gap-3 mb-2">
                 <div className="text-lg font-semibold text-gray-900">{day}</div>
-                <div className="text-sm font-semibold text-gray-500">{getDayDate(week || 1, day)}</div>
+                <div className="text-sm font-semibold text-gray-500">{getDayDate(week, day)}</div>
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <span className="font-semibold text-gray-500">{displayLessons.length} lesson{displayLessons.length !== 1 ? 's' : ''}</span>
                 <span className="h-3 w-px bg-gray-300" aria-hidden="true" />
-                <span className="text-orange-600 font-semibold">Week {week}</span>
+                <span className="text-orange-600 font-semibold">
+                  Week {monthWeekInfo ? monthWeekInfo.weekNumber : '…'}
+                </span>
               </div>
             </div>
           </div>
@@ -462,17 +599,44 @@ export const TeacherTimeline: React.FC = () => {
               const cleanClassCode = l.class_code || 'Unknown Class';
               
               // Clean up co-teachers by filtering out malformed names
-              const cleanCoTeachers = (l.co_teachers || [])
+              const coTeachersFromArray = (l.co_teachers || [])
                 .filter(name => name && typeof name === 'string')
                 .filter(name => !name.includes('\n') && name !== l.teacher_name)
                 .filter(name => name.length < 50 && name.length > 1);
               
+              // Also include the direct co-teacher name from the lesson record
+              const directCoTeacher = l.co_teacher_name && l.co_teacher_name !== l.teacher_name 
+                ? l.co_teacher_name 
+                : null;
+              
+              // Combine both sources and remove duplicates
+              const allCoTeachers = [...coTeachersFromArray];
+              if (directCoTeacher && !allCoTeachers.includes(directCoTeacher)) {
+                allCoTeachers.push(directCoTeacher);
+              }
+              
+              const cleanCoTeachers = allCoTeachers;
+              
+              // Debug co-teacher data for Week 7
+              if (week === 7 && (cleanCoTeachers.length > 0 || directCoTeacher)) {
+                console.log('🔍 Co-teacher debug for lesson:', {
+                  class_code: l.class_code,
+                  teacher_name: l.teacher_name,
+                  co_teacher_name: l.co_teacher_name,
+                  co_teachers: l.co_teachers,
+                  directCoTeacher,
+                  cleanCoTeachers
+                });
+              }
+              
               // Campus name is now correct from backend
               const campusName = l.campus_name;
               
+              const keyParts = [l.week_number ?? l.week ?? 'wk', l.day, l.start_time, idx].join('-');
+
               return (
                 <LessonCard
-                  key={`${l.week}-${l.day}-${l.start_time}-${idx}`}
+                  key={keyParts}
                   title={cleanClassCode}
                   start={l.start_time}
                   end={l.end_time}
