@@ -52,11 +52,17 @@ export default function PeriodGrid({
   // 1) Build the period rows
   const startMin = toMinutes(dayStart);
   const endMin = toMinutes(dayEnd);
-  const periodCount = Math.ceil((endMin - startMin) / periodMinutes);
-  const periods = React.useMemo(
-    () => Array.from({ length: periodCount + 1 }, (_, i) => startMin + i * periodMinutes),
-    [periodCount, startMin, periodMinutes]
-  );
+  // Generate periods array including all slots from startMin to endMin (inclusive)
+  const periods = React.useMemo(() => {
+    const slots: number[] = [];
+    for (let m = startMin; m <= endMin; m += periodMinutes) {
+      slots.push(m);
+    }
+    return slots;
+  }, [startMin, endMin, periodMinutes]);
+  
+  // slotCount is number of actual 30-min slots (boundaries - 1)
+  const slotCount = Math.max(0, periods.length - 1);
 
   // 2) Group by day using the stable lesson.day field
   const byDay: Record<number, LessonOut[]> = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
@@ -71,7 +77,7 @@ export default function PeriodGrid({
         className="grid relative min-w-max"
         style={{
           gridTemplateColumns: `80px repeat(7, minmax(200px, 1fr))`,
-          gridTemplateRows: `60px repeat(${periodCount}, 80px)`,
+          gridTemplateRows: `60px repeat(${slotCount}, 80px)`,
         }}
       >
         {/* Top-left empty header cell */}
@@ -109,7 +115,8 @@ export default function PeriodGrid({
           
           // Calculate lanes for all lessons in this day
           const lessonsWithLanes = dayLessons.map((lesson, idx) => {
-            const { rowStart, rowSpan } = getGridPlacement(lesson.start_time, lesson.end_time, dayStart, periodMinutes, 0);
+            // headerRows = 1 because grid has header row at row 1
+            const { rowStart, rowSpan } = getGridPlacement(lesson.start_time, lesson.end_time, dayStart, periodMinutes, 1);
             const startMin = toMinutes(lesson.start_time);
             const endMin = toMinutes(lesson.end_time);
             
@@ -159,23 +166,26 @@ export default function PeriodGrid({
                     ? 'bg-gray-50/30' 
                     : 'hover:bg-gray-50/50'
               }`}
-              style={{ gridTemplateRows: `repeat(${periodCount}, 80px)` }}
+              style={{ gridTemplateRows: `repeat(${slotCount}, 80px)` }}
             >
               {/* background separators */}
-              <ColumnBackground periodCount={periodCount} />
+              <ColumnBackground periodCount={slotCount} />
               
               {/* foreground overlay with hour/half-hour lines */}
-              <TimeOverlay periodCount={periodCount} periodMinutes={periodMinutes} />
+              <TimeOverlay periodCount={slotCount} periodMinutes={periodMinutes} />
 
               {/* slot action overlays for edit mode */}
               {isEditMode && onSlotClick && (
                 <div className="absolute inset-0 pointer-events-none">
-                  {Array.from({ length: periodCount }).map((_, slotIndex) => {
+                  {Array.from({ length: slotCount }).map((_, slotIndex) => {
                     const slotMinutes = startMin + slotIndex * periodMinutes;
                     const slotTime = formatTime(slotMinutes);
                     const topPosition = slotIndex * 80 + 40; // center of slot (80px height)
                     const isOccupied = lessonsWithLaneAssignment.some((lesson) => {
-                      const lessonStartSlot = lesson.rowStart - 1;
+                      // rowStart accounts for header row (row 1) + slot offset
+                      // Convert from 1-based grid row to 0-based slot index
+                      // rowStart = headerRows(1) + 1 + startSlots, so startSlots = rowStart - 2
+                      const lessonStartSlot = lesson.rowStart - 2;
                       const lessonEndSlot = lessonStartSlot + lesson.rowSpan;
                       return slotIndex >= lessonStartSlot && slotIndex < lessonEndSlot;
                     });

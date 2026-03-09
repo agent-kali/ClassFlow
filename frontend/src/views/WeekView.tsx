@@ -420,6 +420,43 @@ export const WeekView: React.FC = () => {
   const defaultEndTime = selectedSlot && editingLesson === null ? computeEndTime(selectedSlot.time, 30) : undefined;
   const defaultDayName = selectedSlot ? dayNameMap[selectedSlot.day] : undefined;
 
+  const timeWindow = React.useMemo(() => {
+    const fallbackStart = '05:00';
+    const fallbackEnd = '22:00';
+
+    const toMinutes = (t: string) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const toHHMM = (m: number) => {
+      const hh = Math.max(0, Math.min(23, Math.floor(m / 60)));
+      const mm = Math.max(0, Math.min(59, m % 60));
+      return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+    };
+
+    if (!lessons || lessons.length === 0) {
+      return { dayStart: fallbackStart, dayEnd: fallbackEnd };
+    }
+
+    let minStart = Infinity;
+    let maxEnd = -Infinity;
+    for (const l of lessons) {
+      if (l.start_time) minStart = Math.min(minStart, toMinutes(l.start_time));
+      if (l.end_time) maxEnd = Math.max(maxEnd, toMinutes(l.end_time));
+    }
+    if (!isFinite(minStart) || !isFinite(maxEnd)) {
+      return { dayStart: fallbackStart, dayEnd: fallbackEnd };
+    }
+
+    minStart = Math.max(0, minStart - 30);
+    maxEnd = Math.min(23 * 60 + 59, maxEnd + 30);
+
+    return {
+      dayStart: toHHMM(minStart),
+      dayEnd: toHHMM(maxEnd),
+    };
+  }, [lessons]);
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Top Navigation Header */}
@@ -769,65 +806,16 @@ export const WeekView: React.FC = () => {
           </div>
         )}
 
-        {(() => {
-          const fallbackStart = '05:00';
-          const fallbackEnd = '22:00';
-
-          const toMinutes = (t: string) => {
-            const [h, m] = t.split(':').map(Number);
-            return h * 60 + m;
-          };
-          const toHHMM = (m: number) => {
-            const hh = Math.max(0, Math.min(23, Math.floor(m / 60)));
-            const mm = Math.max(0, Math.min(59, m % 60));
-            return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-          };
-
-          if (!lessons || lessons.length === 0) {
-            return (
-              <PeriodGrid
-                weekStartISO={weekStart.toISOString()}
-                lessons={lessons}
-                dayStart={fallbackStart}
-                dayEnd={fallbackEnd}
-                isEditMode={isEditMode && canEdit}
-                onSlotClick={handleSlotClick}
-                onLessonEdit={handleLessonEdit}
-                onLessonDelete={handleLessonDelete}
-              />
-            );
-          }
-
-          let minStart = Infinity;
-          let maxEnd = -Infinity;
-          for (const l of lessons) {
-            if (l.start_time) minStart = Math.min(minStart, toMinutes(l.start_time));
-            if (l.end_time) maxEnd = Math.max(maxEnd, toMinutes(l.end_time));
-          }
-          if (!isFinite(minStart) || !isFinite(maxEnd)) {
-            minStart = toMinutes(fallbackStart);
-            maxEnd = toMinutes(fallbackEnd);
-          }
-          // add a small padding window
-          minStart = Math.max(0, minStart - 30);
-          maxEnd = Math.min(23 * 60 + 59, maxEnd + 30);
-
-          const computedStart = toHHMM(minStart);
-          const computedEnd = toHHMM(maxEnd);
-
-          return (
-            <PeriodGrid
-              weekStartISO={weekStart.toISOString()}
-              lessons={lessons}
-              dayStart={computedStart}
-              dayEnd={computedEnd}
-              isEditMode={isEditMode && canEdit}
-              onSlotClick={handleSlotClick}
-              onLessonEdit={handleLessonEdit}
-              onLessonDelete={handleLessonDelete}
-            />
-          );
-        })()}
+        <PeriodGrid
+          weekStartISO={weekStart.toISOString()}
+          lessons={lessons}
+          dayStart={timeWindow.dayStart}
+          dayEnd={timeWindow.dayEnd}
+          isEditMode={isEditMode && canEdit}
+          onSlotClick={handleSlotClick}
+          onLessonEdit={handleLessonEdit}
+          onLessonDelete={handleLessonDelete}
+        />
       </div>
 
       <LessonModal
