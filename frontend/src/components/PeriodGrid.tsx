@@ -72,7 +72,7 @@ export default function PeriodGrid({
   }
 
   return (
-    <div className="w-full overflow-x-auto overflow-y-auto bg-white rounded-lg shadow-sm border border-gray-200">
+    <div className="w-full overflow-x-auto overflow-y-auto bg-surface rounded-lg shadow-glass border border-white/[0.06]">
       <div
         className="grid relative min-w-max"
         style={{
@@ -81,7 +81,7 @@ export default function PeriodGrid({
         }}
       >
         {/* Top-left empty header cell */}
-        <div className="sticky top-0 z-30 bg-gray-50 border-b border-gray-200" />
+        <div className="sticky top-0 z-30 bg-base border-b border-white/[0.06]" />
 
         {/* Day headers */}
         {DAYS.map((_, d) => (
@@ -90,12 +90,12 @@ export default function PeriodGrid({
 
         {/* Time rail */}
         <div 
-          className="sticky left-0 col-start-1 row-start-2 row-span-full z-30 bg-gray-50 border-r border-gray-300"
+          className="sticky left-0 col-start-1 row-start-2 row-span-full z-30 bg-base border-r border-white/[0.08]"
           style={{ position: 'sticky', left: 0 }}
         >
           {periods.slice(0, -1).map((min, i) => (
-            <div key={i} className="h-[80px] flex items-center justify-center px-2 border-b border-gray-200">
-              <span className="text-gray-700 font-semibold tabular-nums text-xs">{formatTime(min)}</span>
+            <div key={i} className="h-[80px] flex items-center justify-center px-2 border-b border-white/[0.06]">
+              <span className="text-white/70 font-semibold tabular-nums text-xs">{formatTime(min)}</span>
             </div>
           ))}
         </div>
@@ -159,12 +159,12 @@ export default function PeriodGrid({
           return (
             <div
               key={d}
-              className={`relative col-start-[auto] row-start-2 row-span-full border-r border-gray-200 transition-colors group ${
+              className={`relative col-start-[auto] row-start-2 row-span-full border-r border-white/[0.06] transition-colors group ${
                 isToday 
                   ? 'bg-brand-orange/5' 
                   : isWeekend 
-                    ? 'bg-gray-50/30' 
-                    : 'hover:bg-gray-50/50'
+                    ? 'bg-base/30' 
+                    : 'hover:bg-base/50'
               }`}
               style={{ gridTemplateRows: `repeat(${slotCount}, 80px)` }}
             >
@@ -206,7 +206,7 @@ export default function PeriodGrid({
                         style={{ top: `${topPosition}px` }}
                         title={`Add lesson at ${slotTime}`}
                       >
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500 text-white shadow-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-500 text-white shadow-card hover:bg-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:ring-offset-2">
                           <PlusIcon className="h-4 w-4" />
                         </span>
                       </button>
@@ -263,13 +263,13 @@ function DayHeader({ dow, weekStartISO, selectedDay }: { dow: number; weekStartI
   const isWeekend = dow === 5 || dow === 6; // Saturday or Sunday
   
   return (
-    <div className="sticky top-0 z-30 bg-gray-50 border-b border-gray-200">
+    <div className="sticky top-0 z-30 bg-base border-b border-white/[0.06]">
       <div className={`h-12 w-full flex flex-col items-center justify-center transition-colors ${
         isToday 
           ? 'bg-brand-orange/10 text-brand-orange border-b-2 border-brand-orange' 
           : isWeekend
-            ? 'text-gray-500 bg-gray-50/50'
-            : 'text-gray-600 hover:bg-gray-100/50'
+            ? 'text-white/50 bg-base/50'
+            : 'text-white/60 hover:bg-elevated/50'
       }`}>
         <div className={`text-sm font-semibold uppercase tracking-wide ${
           isToday ? 'text-brand-orange' : ''
@@ -292,7 +292,7 @@ function ColumnBackground({ periodCount }: { periodCount: number }) {
       {Array.from({ length: periodCount }).map((_, i) => (
         <div
           key={i}
-          className={i % 2 === 0 ? "border-b border-gray-200" : "border-b border-dashed border-gray-100"}
+          className={i % 2 === 0 ? "border-b border-white/[0.06]" : "border-b border-dashed border-white/[0.04]"}
         />
       ))}
     </div>
@@ -307,8 +307,8 @@ function TimeOverlay({ periodCount, periodMinutes }: { periodCount: number; peri
           key={i}
           className={`${
             i % 2 === 0 
-              ? "border-b-2 border-gray-300" // Full hour lines - stronger
-              : "border-b border-dashed border-gray-200" // Half hour lines - lighter
+              ? "border-b-2 border-white/[0.08]" // Full hour lines - stronger
+              : "border-b border-dashed border-white/[0.06]" // Half hour lines - lighter
           }`}
         />
       ))}
@@ -338,7 +338,7 @@ function LessonCell({
   const campusBgColor = isE2 ? 'bg-campus-e2/10' : 'bg-campus-e1/10';
   
   return (
-    <div className="h-full w-full bg-white border border-gray-200 rounded-lg shadow-sm p-2 flex flex-col gap-1 hover:shadow-md transition-all duration-200 m-1 relative">
+    <div className="h-full w-full bg-surface border border-white/[0.06] rounded-lg shadow-glass p-2 flex flex-col gap-1 hover:shadow-md transition-all duration-200 m-1 relative">
       {isEditMode && (onEdit || onDelete) && (
         <div className="absolute top-1 right-1 flex items-center gap-1 z-20">
           {onEdit && (
@@ -348,7 +348,7 @@ function LessonCell({
                 event.stopPropagation();
                 onEdit();
               }}
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-orange-600 shadow ring-1 ring-orange-200 hover:bg-orange-50 hover:text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-surface/90 text-accent-400 shadow ring-1 ring-orange-200 hover:bg-accent-500/[0.06] hover:text-accent-300 focus:outline-none focus:ring-2 focus:ring-accent-500"
               title="Edit lesson"
             >
               <PencilSquareIcon className="h-4 w-4" />
@@ -361,7 +361,7 @@ function LessonCell({
                 event.stopPropagation();
                 onDelete();
               }}
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-red-600 shadow ring-1 ring-red-200 hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-surface/90 text-red-400 shadow ring-1 ring-red-200 hover:bg-red-500/[0.08] hover:text-red-400 focus:outline-none focus:ring-2 focus:ring-red-500"
               title="Delete lesson"
             >
               <TrashIcon className="h-4 w-4" />
@@ -378,25 +378,25 @@ function LessonCell({
           </span>
         )}
         {lesson.room && (
-          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-elevated text-white/70 border border-white/[0.06]">
             {lesson.room}
           </span>
         )}
       </div>
       
       {/* Time range */}
-      <div className="text-sm text-gray-900 tabular-nums font-semibold">
+      <div className="text-sm text-white tabular-nums font-semibold">
         {lesson.start_time} — {lesson.end_time}
       </div>
 
       {/* Class + primary teacher */}
-      <div className="text-[15px] font-semibold text-gray-900 truncate">
+      <div className="text-[15px] font-semibold text-white truncate">
         {lesson.class_code}
       </div>
 
       {/* Co-teachers (VN) */}
       {coTeachers && (
-        <div className="text-xs text-gray-600 truncate" title={coTeachers}>
+        <div className="text-xs text-white/60 truncate" title={coTeachers}>
           VN: {coTeachers}
         </div>
       )}

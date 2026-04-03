@@ -277,7 +277,7 @@ const DragDropCalendar: React.FC<DragDropCalendarProps> = ({ week, onWeekChange 
   const renderLessonCard = (lesson: LessonOut) => (
     <div
       key={`${lesson.id}-${lesson.day}-${lesson.start_time}`}
-      className={`lesson-card bg-white border-l-4 border-blue-500 shadow-sm rounded p-2 mb-1 cursor-move transition-all duration-200 hover:shadow-md ${
+      className={`lesson-card bg-surface border-l-4 border-accent-500 shadow-sm rounded p-2 mb-1 cursor-move transition-all duration-200 hover:shadow-md ${
         isDragging ? 'pointer-events-none' : ''
       }`}
       draggable

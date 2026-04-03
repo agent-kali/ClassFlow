@@ -308,30 +308,30 @@ const ScheduleManager: React.FC = () => {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-500"></div>
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-accent-500"></div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-      <div className="px-4 py-6 sm:px-0">
+    <div className="page-container page-container-xl py-6">
+      <div className="py-6">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Schedule Manager</h1>
+          <h1 className="text-3xl font-bold text-white">Schedule Manager</h1>
           <div className="flex gap-3">
             <button
               onClick={toggleBulkMode}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 bulkMode 
-                  ? 'bg-orange-600 hover:bg-orange-700 text-white' 
-                  : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                  ? 'bg-accent-600 hover:bg-orange-700 text-white' 
+                  : 'bg-gray-200 hover:bg-gray-300 text-white/70'
               }`}
             >
               {bulkMode ? 'Exit Bulk Mode' : 'Bulk Mode'}
             </button>
             <button
               onClick={handleAddLesson}
-              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+              className="bg-accent-600 hover:bg-orange-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
             >
               Add Lesson
             </button>
@@ -339,7 +339,7 @@ const ScheduleManager: React.FC = () => {
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+          <div className="bg-red-500/[0.08] border border-red-500/20 text-red-400 px-4 py-3 rounded mb-4">
             {error}
           </div>
         )}
@@ -355,9 +355,9 @@ const ScheduleManager: React.FC = () => {
                       type="checkbox"
                       checked={selectedLessons.size === filteredLessons.filter(l => l.id).length && filteredLessons.filter(l => l.id).length > 0}
                       onChange={selectAllLessons}
-                      className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                      className="rounded border-white/[0.08] text-accent-400 focus:ring-accent-500"
                     />
-                    <span className="text-sm font-medium text-gray-700">
+                    <span className="text-sm font-medium text-white/70">
                       Select All ({selectedLessons.size} selected)
                     </span>
                   </div>
@@ -374,7 +374,7 @@ const ScheduleManager: React.FC = () => {
                       }
                       setSelectedLessons(newSelection);
                     }}
-                    className="text-sm text-orange-600 hover:text-orange-800 underline"
+                    className="text-sm text-accent-400 hover:text-accent-300 underline"
                   >
                     Select Page
                   </button>
@@ -421,7 +421,7 @@ const ScheduleManager: React.FC = () => {
           <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 via-purple-50/20 to-pink-50/30"></div>
           
           <div className="relative z-10">
-            <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-3">
+            <h2 className="text-xl font-bold text-white/90 mb-6 flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
                 <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.207A1 1 0 013 6.5V4z" />
@@ -433,13 +433,13 @@ const ScheduleManager: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
               {/* Month Filter */}
               <div className="group">
-                <label className="flex text-sm font-semibold text-gray-700 mb-3 items-center gap-2">
+                <label className="flex text-sm font-semibold text-white/70 mb-3 items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-gradient-to-r from-blue-500 to-purple-600"></div>
                   Month
                 </label>
                 <div className="relative">
                   <select
-                    className="w-full px-4 py-3.5 bg-white/70 backdrop-blur-sm border border-white/30 rounded-xl shadow-lg text-gray-800 font-medium text-base focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-300 hover:bg-white/80 hover:shadow-xl hover:scale-[1.02] cursor-pointer appearance-none"
+                    className="w-full px-4 py-3.5 bg-surface/70 backdrop-blur-sm border border-white/30 rounded-xl shadow-card text-white/90 font-medium text-base focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-300 hover:bg-surface/80 hover:shadow-card hover:scale-[1.02] cursor-pointer appearance-none"
                     value={selectedMonth}
                     onChange={(e) => setSelectedMonth(Number(e.target.value))}
                   >
@@ -450,7 +450,7 @@ const ScheduleManager: React.FC = () => {
                     ))}
                   </select>
                   <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
-                    <svg className="w-5 h-5 text-gray-500 group-hover:text-blue-500 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-white/50 group-hover:text-blue-500 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </div>
@@ -459,13 +459,13 @@ const ScheduleManager: React.FC = () => {
 
               {/* Year Filter */}
               <div className="group">
-                <label className="flex text-sm font-semibold text-gray-700 mb-3 items-center gap-2">
+                <label className="flex text-sm font-semibold text-white/70 mb-3 items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-gradient-to-r from-green-500 to-blue-600"></div>
                   Year
                 </label>
                 <div className="relative">
                   <select
-                    className="w-full px-4 py-3.5 bg-white/70 backdrop-blur-sm border border-white/30 rounded-xl shadow-lg text-gray-800 font-medium text-base focus:outline-none focus:ring-4 focus:ring-green-500/20 focus:border-green-400 transition-all duration-300 hover:bg-white/80 hover:shadow-xl hover:scale-[1.02] cursor-pointer appearance-none"
+                    className="w-full px-4 py-3.5 bg-surface/70 backdrop-blur-sm border border-white/30 rounded-xl shadow-card text-white/90 font-medium text-base focus:outline-none focus:ring-4 focus:ring-green-500/20 focus:border-green-400 transition-all duration-300 hover:bg-surface/80 hover:shadow-card hover:scale-[1.02] cursor-pointer appearance-none"
                     value={selectedYear}
                     onChange={(e) => setSelectedYear(Number(e.target.value))}
                   >
@@ -477,7 +477,7 @@ const ScheduleManager: React.FC = () => {
                     })}
                   </select>
                   <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
-                    <svg className="w-5 h-5 text-gray-500 group-hover:text-green-500 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-white/50 group-hover:text-green-500 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </div>
@@ -486,13 +486,13 @@ const ScheduleManager: React.FC = () => {
 
               {/* Week Filter */}
               <div className="group">
-                <label className="flex text-sm font-semibold text-gray-700 mb-3 items-center gap-2">
+                <label className="flex text-sm font-semibold text-white/70 mb-3 items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-600"></div>
                   Week
                 </label>
                 <div className="relative">
                   <select
-                    className="w-full px-4 py-3.5 bg-white/70 backdrop-blur-sm border border-white/30 rounded-xl shadow-lg text-gray-800 font-medium text-base focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-400 transition-all duration-300 hover:bg-white/80 hover:shadow-xl hover:scale-[1.02] cursor-pointer appearance-none"
+                    className="w-full px-4 py-3.5 bg-surface/70 backdrop-blur-sm border border-white/30 rounded-xl shadow-card text-white/90 font-medium text-base focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-400 transition-all duration-300 hover:bg-surface/80 hover:shadow-card hover:scale-[1.02] cursor-pointer appearance-none"
                     value={selectedWeekNumber}
                     onChange={(e) => setSelectedWeekNumber(Number(e.target.value))}
                   >
@@ -503,7 +503,7 @@ const ScheduleManager: React.FC = () => {
                     ))}
                   </select>
                   <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
-                    <svg className="w-5 h-5 text-gray-500 group-hover:text-purple-500 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-white/50 group-hover:text-purple-500 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </div>
@@ -512,13 +512,13 @@ const ScheduleManager: React.FC = () => {
 
               {/* Day Filter */}
               <div className="group">
-                <label className="flex text-sm font-semibold text-gray-700 mb-3 items-center gap-2">
+                <label className="flex text-sm font-semibold text-white/70 mb-3 items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-600"></div>
                   Day
                 </label>
                 <div className="relative">
                   <select
-                    className="w-full px-4 py-3.5 bg-white/70 backdrop-blur-sm border border-white/30 rounded-xl shadow-lg text-gray-800 font-medium text-base focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-400 transition-all duration-300 hover:bg-white/80 hover:shadow-xl hover:scale-[1.02] cursor-pointer appearance-none"
+                    className="w-full px-4 py-3.5 bg-surface/70 backdrop-blur-sm border border-white/30 rounded-xl shadow-card text-white/90 font-medium text-base focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-400 transition-all duration-300 hover:bg-surface/80 hover:shadow-card hover:scale-[1.02] cursor-pointer appearance-none"
                     value={selectedDay}
                     onChange={(e) => setSelectedDay(e.target.value)}
                   >
@@ -528,7 +528,7 @@ const ScheduleManager: React.FC = () => {
                     ))}
                   </select>
                   <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
-                    <svg className="w-5 h-5 text-gray-500 group-hover:text-purple-500 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-white/50 group-hover:text-purple-500 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </div>
@@ -537,13 +537,13 @@ const ScheduleManager: React.FC = () => {
 
               {/* Teacher Filter */}
               <div className="group">
-                <label className="flex text-sm font-semibold text-gray-700 mb-3 items-center gap-2">
+                <label className="flex text-sm font-semibold text-white/70 mb-3 items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-gradient-to-r from-orange-500 to-red-600"></div>
                   Teacher
                 </label>
                 <div className="relative">
                   <select
-                    className="w-full px-4 py-3.5 bg-white/70 backdrop-blur-sm border border-white/30 rounded-xl shadow-lg text-gray-800 font-medium text-base focus:outline-none focus:ring-4 focus:ring-orange-500/20 focus:border-orange-400 transition-all duration-300 hover:bg-white/80 hover:shadow-xl hover:scale-[1.02] cursor-pointer appearance-none"
+                    className="w-full px-4 py-3.5 bg-surface/70 backdrop-blur-sm border border-white/30 rounded-xl shadow-card text-white/90 font-medium text-base focus:outline-none focus:ring-4 focus:ring-accent-500/20 focus:border-accent-500/40 transition-all duration-300 hover:bg-surface/80 hover:shadow-card hover:scale-[1.02] cursor-pointer appearance-none"
                     value={selectedTeacher || ''}
                     onChange={(e) => setSelectedTeacher(e.target.value ? Number(e.target.value) : null)}
                   >
@@ -555,7 +555,7 @@ const ScheduleManager: React.FC = () => {
                     ))}
                   </select>
                   <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
-                    <svg className="w-5 h-5 text-gray-500 group-hover:text-orange-500 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-white/50 group-hover:text-accent-400 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </div>
@@ -567,9 +567,9 @@ const ScheduleManager: React.FC = () => {
 
 
         {/* Current Lessons Display */}
-        <div className="bg-white shadow rounded-lg overflow-hidden">
+        <div className="bg-surface shadow rounded-lg overflow-hidden">
           <div className="px-4 py-5 sm:p-6">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">
+            <h2 className="text-lg font-medium text-white mb-4">
               Current Schedule {selectedYear && selectedMonth && selectedWeekNumber && 
                 `- ${new Date(selectedYear, selectedMonth - 1, 1).toLocaleDateString('en-US', { month: 'long' })} ${selectedYear} Week ${selectedWeekNumber}`} 
               {selectedDay && ` - ${selectedDay}`}
@@ -580,7 +580,7 @@ const ScheduleManager: React.FC = () => {
             </h2>
             
             {lessons.length === 0 ? (
-              <p className="text-gray-500">No lessons found for the selected filters.</p>
+              <p className="text-white/50">No lessons found for the selected filters.</p>
             ) : (
               <>
                 {/* Search and Lesson Count */}
@@ -595,7 +595,7 @@ const ScheduleManager: React.FC = () => {
                           setSearchTerm(e.target.value);
                           setCurrentPage(1); // Reset to first page when searching
                         }}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
+                        className="flex-1 px-3 py-2 border border-white/[0.08] rounded-md focus:ring-2 focus:ring-accent-500 focus:border-accent-500 transition-colors"
                       />
                       {searchTerm && (
                         <button
@@ -603,17 +603,17 @@ const ScheduleManager: React.FC = () => {
                             setSearchTerm('');
                             setCurrentPage(1);
                           }}
-                          className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                          className="px-3 py-2 text-sm text-white/50 hover:text-white/70 border border-white/[0.08] rounded-md hover:bg-base transition-colors"
                         >
                           Clear
                         </button>
                       )}
                     </div>
-                    <div className="text-sm text-gray-500">
+                    <div className="text-sm text-white/50">
                       Page {currentPage} of {totalPages}
                     </div>
                   </div>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-white/60">
                     Showing {startIndex + 1}-{Math.min(endIndex, filteredLessons.length)} of {filteredLessons.length} lessons
                     {searchTerm && ` (filtered from ${lessons.length} total)`}
                   </p>
@@ -624,8 +624,8 @@ const ScheduleManager: React.FC = () => {
                   {currentLessons.map((lesson, index) => (
                     <div key={index} className={`border rounded-lg p-4 transition-colors ${
                       bulkMode && selectedLessons.has(lesson.id!) 
-                        ? 'border-orange-300 bg-orange-50' 
-                        : 'border-gray-200'
+                        ? 'border-orange-300 bg-accent-500/[0.06]' 
+                        : 'border-white/[0.06]'
                     }`}>
                       <div className="flex justify-between items-start">
                         <div className="flex items-start gap-3 flex-1">
@@ -634,21 +634,21 @@ const ScheduleManager: React.FC = () => {
                               type="checkbox"
                               checked={selectedLessons.has(lesson.id)}
                               onChange={() => toggleLessonSelection(lesson.id!)}
-                              className="mt-1 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                              className="mt-1 rounded border-white/[0.08] text-accent-400 focus:ring-accent-500"
                             />
                           )}
                           <div className="flex-1">
-                            <h3 className="text-sm font-medium text-gray-900">
+                            <h3 className="text-sm font-medium text-white">
                               {lesson.class_code} - {lesson.teacher_name}
                             </h3>
-                            <p className="text-sm text-gray-600">
+                            <p className="text-sm text-white/60">
                               {lesson.month_week_display || `Week ${lesson.week}`}, {formatDayDisplay(lesson.day)}
                             </p>
-                            <p className="text-sm text-gray-600">
+                            <p className="text-sm text-white/60">
                               {formatTime(lesson.start_time)} - {formatTime(lesson.end_time)}
                             </p>
                             {lesson.room && (
-                              <p className="text-sm text-gray-600">Room: {lesson.room}</p>
+                              <p className="text-sm text-white/60">Room: {lesson.room}</p>
                             )}
                           </div>
                         </div>
@@ -656,14 +656,14 @@ const ScheduleManager: React.FC = () => {
                           <div className="flex space-x-2">
                             <button 
                               onClick={() => handleEditLesson(lesson)}
-                              className="text-orange-600 hover:text-orange-900 text-sm font-medium transition-colors"
+                              className="text-accent-400 hover:text-orange-900 text-sm font-medium transition-colors"
                             >
                               Edit
                             </button>
                             {lesson.id && (
                               <button 
                                 onClick={() => handleDelete(lesson.id!)}
-                                className="text-red-600 hover:text-red-900 text-sm font-medium transition-colors"
+                                className="text-red-400 hover:text-red-900 text-sm font-medium transition-colors"
                               >
                                 Delete
                               </button>
@@ -681,7 +681,7 @@ const ScheduleManager: React.FC = () => {
                     <button
                       onClick={() => handlePageChange(currentPage - 1)}
                       disabled={currentPage === 1}
-                      className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-2 text-sm font-medium text-white/50 bg-surface border border-white/[0.08] rounded-md hover:bg-base disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Previous
                     </button>
@@ -693,8 +693,8 @@ const ScheduleManager: React.FC = () => {
                         onClick={() => handlePageChange(page)}
                         className={`px-3 py-2 text-sm font-medium rounded-md ${
                           page === currentPage
-                            ? 'bg-orange-600 text-white'
-                            : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                            ? 'bg-accent-600 text-white'
+                            : 'text-white/70 bg-surface border border-white/[0.08] hover:bg-base'
                         }`}
                       >
                         {page}
@@ -704,7 +704,7 @@ const ScheduleManager: React.FC = () => {
                     <button
                       onClick={() => handlePageChange(currentPage + 1)}
                       disabled={currentPage === totalPages}
-                      className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-2 text-sm font-medium text-white/50 bg-surface border border-white/[0.08] rounded-md hover:bg-base disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Next
                     </button>

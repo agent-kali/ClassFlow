@@ -312,8 +312,8 @@ The pipeline runs `scripts/deploy_remote.sh` on the VPS, which:
 To deploy manually:
 
 ```bash
-ssh root@68.183.183.248
-cd /opt/e-home
+ssh $DEPLOY_USER@$DEPLOY_HOST
+cd $DEPLOY_PATH
 ./scripts/deploy_remote.sh
 ```
 

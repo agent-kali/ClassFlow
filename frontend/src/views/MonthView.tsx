@@ -381,297 +381,149 @@ export const MonthView: React.FC = () => {
   const isTeacherUser = !canEdit;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div
-        className={`sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm transition-all duration-500 ease-out ${
-          isHeaderVisible ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0"
-        }`}
-      >
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 sm:py-0 sm:h-12">
-            <div className="flex items-center space-x-2 sm:space-x-4">
+    <div className="min-h-screen bg-base">
+      {/* Compact Toolbar */}
+      <div className={`sticky top-0 z-40 glass-nav transition-all duration-500 ease-out ${
+        isHeaderVisible ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0"
+      }`}>
+        <div className="page-container page-container-full">
+          <div className="flex items-center justify-between h-14 gap-4">
+            {/* Left: Teacher Selector (compact) */}
+            <div className="flex items-center gap-3 min-w-0">
               {canEdit ? (
                 <div className="relative" ref={teacherSelectorRef}>
                   <button
                     onClick={() => setIsTeacherPaletteOpen((prev) => !prev)}
-                    className="inline-flex items-center gap-2 px-2 sm:px-3 py-2 text-xs sm:text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:border-orange-400 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 transition-all"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white/70 rounded-lg border border-white/[0.08] hover:border-accent-500/30 hover:text-white transition-all"
                   >
-                    <div className="flex flex-col items-start leading-tight min-w-0">
-                      <span className="text-xs uppercase tracking-wide text-gray-400">Teacher</span>
-                      <span className="font-semibold text-gray-900 truncate max-w-[120px] sm:max-w-none">
-                        {showAllTeachers ? "All Teachers" : currentTeacherName}
-                      </span>
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                      style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
+                      {showAllTeachers ? '\u221e' : (currentTeacherName?.[0] ?? 'T').toUpperCase()}
                     </div>
-                    <span className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-orange-100 text-orange-600 font-semibold text-xs sm:text-sm flex-shrink-0">
-                      {showAllTeachers ? "ALL" : `T${teacherId}`}
+                    <span className="font-semibold text-white truncate max-w-[120px]">
+                      {showAllTeachers ? "All" : currentTeacherName}
                     </span>
-                    <ChevronDownIcon
-                      className={`h-3 w-3 sm:h-4 sm:w-4 transition-transform flex-shrink-0 ${
-                        isTeacherPaletteOpen ? "rotate-180 text-orange-500" : "text-gray-400"
-                      }`}
-                    />
+                    <ChevronDownIcon className={`h-3 w-3 transition-transform ${isTeacherPaletteOpen ? "rotate-180 text-accent-400" : "text-white/40"}`} />
                   </button>
 
                   {isTeacherPaletteOpen && (
-                    <div className="absolute left-0 mt-3 w-[340px] max-w-[85vw] rounded-2xl border border-gray-200 bg-white p-4 shadow-xl ring-1 ring-black/5">
-                      <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-                        <div className="flex items-center gap-2">
-                          <SparklesIcon className="h-5 w-5 text-orange-500" />
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">Choose your teacher</p>
-                            <p className="text-xs text-gray-500">Split by foreign and Vietnamese guides for clarity</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => setIsTeacherPaletteOpen(false)}
-                          className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                          aria-label="Close teacher selector"
-                        >
-                          <XCircleIcon className="h-5 w-5" />
-                        </button>
-                      </div>
-
-                      <div className="relative mt-3">
+                    <div className="absolute left-0 mt-2 w-[300px] max-w-[85vw] rounded-2xl border border-white/[0.06] bg-elevated p-3 shadow-card z-50">
+                      <div className="relative mb-3">
                         <input
                           type="text"
                           value={teacherSearch}
                           onChange={(e) => setTeacherSearch(e.target.value)}
-                          placeholder="Search teacher name..."
-                          className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2 pl-3 pr-3 text-sm text-gray-700 placeholder-gray-400 focus:border-orange-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-100"
+                          placeholder="Search teacher\u2026"
+                          className="w-full rounded-lg border border-white/[0.06] bg-base py-2 pl-3 pr-3 text-sm text-white placeholder-white/30 focus:border-accent-500/40 focus:outline-none"
+                          autoFocus
                         />
                       </div>
-
-                      <div className="mt-4 space-y-4 max-h-[360px] overflow-y-auto pr-1">
-                        <Section
-                          title="Foreign teachers"
-                          icon={<GlobeAltIcon className="h-4 w-4" />}
-                          accent="orange"
-                          count={segmentedTeachers.foreign.length}
-                        />
-                        <div className="grid grid-cols-1 gap-1">
-                          <button
-                            onClick={() => {
-                              handleTeacherChange("all");
-                              setIsTeacherPaletteOpen(false);
-                            }}
-                            className={`flex items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
-                              showAllTeachers
-                                ? "bg-orange-500 text-white shadow-sm"
-                                : "text-gray-600 hover:bg-orange-50 hover:text-orange-600"
-                            }`}
-                          >
-                            <span className="flex items-center gap-2 font-semibold">
-                              <UserGroupIcon className="h-4 w-4" />
-                              All Teachers
-                            </span>
-                            <span className="text-xs uppercase tracking-wide">Overview</span>
+                      <div className="space-y-1 max-h-[320px] overflow-y-auto">
+                        <button
+                          onClick={() => { handleTeacherChange("all"); setIsTeacherPaletteOpen(false); }}
+                          className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${showAllTeachers ? "bg-accent-500 text-white" : "text-white/60 hover:bg-white/[0.04]"}`}
+                        >
+                          <UserGroupIcon className="h-4 w-4" />
+                          All Teachers
+                        </button>
+                        {segmentedTeachers.foreign.length > 0 && (
+                          <div className="pt-2 pb-1 px-1 text-[10px] uppercase tracking-wider text-white/30 font-semibold">Foreign</div>
+                        )}
+                        {segmentedTeachers.foreign.map((t) => (
+                          <button key={t.teacher_id} onClick={() => { handleTeacherChange(t.teacher_id); setIsTeacherPaletteOpen(false); }}
+                            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${!showAllTeachers && t.teacher_id === teacherId ? "bg-accent-500 text-white" : "text-white/60 hover:bg-white/[0.04]"}`}>
+                            <span className="font-medium">{t.name}</span>
                           </button>
-                          {segmentedTeachers.foreign.length === 0 && (
-                            <EmptyState search={teacherSearch} label="foreign teachers" />
-                          )}
-                          {segmentedTeachers.foreign.map((teacher) => {
-                            const isActive = !showAllTeachers && teacher.teacher_id === teacherId;
-                            return (
-                              <TeacherOption
-                                key={teacher.teacher_id}
-                                teacher={teacher}
-                                isActive={isActive}
-                                onSelect={() => {
-                                  handleTeacherChange(teacher.teacher_id);
-                                  setIsTeacherPaletteOpen(false);
-                                }}
-                                badge={{ icon: <FlagIcon className="h-4 w-4" />, label: "Foreign" }}
-                                accent="orange"
-                              />
-                            );
-                          })}
-                        </div>
-
-                        <Section
-                          title="Cover Foreign Teachers"
-                          icon={<UserGroupIcon className="h-4 w-4" />}
-                          accent="purple"
-                          count={segmentedTeachers.cover.length}
-                        />
-                        <div className="grid grid-cols-1 gap-1 pb-1">
-                          {segmentedTeachers.cover.length === 0 && (
-                            <EmptyState search={teacherSearch} label="cover teachers" />
-                          )}
-                          {segmentedTeachers.cover.map((teacher) => {
-                            const isActive = !showAllTeachers && teacher.teacher_id === teacherId;
-                            return (
-                              <TeacherOption
-                                key={teacher.teacher_id}
-                                teacher={teacher}
-                                isActive={isActive}
-                                onSelect={() => {
-                                  handleTeacherChange(teacher.teacher_id);
-                                  setIsTeacherPaletteOpen(false);
-                                }}
-                                badge={{ icon: <UserGroupIcon className="h-4 w-4" />, label: "Cover" }}
-                                accent="purple"
-                              />
-                            );
-                          })}
-                        </div>
-
-                        <Section
-                          title="Vietnamese teachers"
-                          icon={<FlagIcon className="h-4 w-4" />}
-                          accent="emerald"
-                          count={segmentedTeachers.vietnamese.length}
-                        />
-                        <div className="grid grid-cols-1 gap-1 pb-1">
-                          {segmentedTeachers.vietnamese.length === 0 && (
-                            <EmptyState search={teacherSearch} label="Vietnamese teachers" />
-                          )}
-                          {segmentedTeachers.vietnamese.map((teacher) => {
-                            const isActive = !showAllTeachers && teacher.teacher_id === teacherId;
-                            return (
-                              <TeacherOption
-                                key={teacher.teacher_id}
-                                teacher={teacher}
-                                isActive={isActive}
-                                onSelect={() => {
-                                  handleTeacherChange(teacher.teacher_id);
-                                  setIsTeacherPaletteOpen(false);
-                                }}
-                                badge={{ icon: <FlagIcon className="h-4 w-4" />, label: "Viet" }}
-                                accent="emerald"
-                              />
-                            );
-                          })}
-                        </div>
+                        ))}
+                        {segmentedTeachers.cover.length > 0 && (
+                          <div className="pt-2 pb-1 px-1 text-[10px] uppercase tracking-wider text-white/30 font-semibold">Cover</div>
+                        )}
+                        {segmentedTeachers.cover.map((t) => (
+                          <button key={t.teacher_id} onClick={() => { handleTeacherChange(t.teacher_id); setIsTeacherPaletteOpen(false); }}
+                            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${!showAllTeachers && t.teacher_id === teacherId ? "bg-purple-600 text-white" : "text-white/60 hover:bg-white/[0.04]"}`}>
+                            <span className="font-medium">{t.name}</span>
+                          </button>
+                        ))}
+                        {segmentedTeachers.vietnamese.length > 0 && (
+                          <div className="pt-2 pb-1 px-1 text-[10px] uppercase tracking-wider text-white/30 font-semibold">Vietnamese</div>
+                        )}
+                        {segmentedTeachers.vietnamese.map((t) => (
+                          <button key={t.teacher_id} onClick={() => { handleTeacherChange(t.teacher_id); setIsTeacherPaletteOpen(false); }}
+                            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${!showAllTeachers && t.teacher_id === teacherId ? "bg-emerald-600 text-white" : "text-white/60 hover:bg-white/[0.04]"}`}>
+                            <span className="font-medium">{t.name}</span>
+                          </button>
+                        ))}
                       </div>
                     </div>
                   )}
                 </div>
               ) : (
-                <div className="flex items-center gap-3 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
-                  <div className="flex flex-col items-start leading-tight">
-                    <span className="text-xs uppercase tracking-wide text-gray-400">Your Schedule</span>
-                    <span className="font-semibold text-gray-900">{currentTeacherName}</span>
-                  </div>
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-600 font-semibold">
-                    T{auth.getUser()?.teacher_id || teacherId}
-                  </span>
+                <div className="flex items-center gap-2 text-sm text-white/70">
+                  <span className="font-semibold">{currentTeacherName}</span>
                 </div>
               )}
-
-              <div className="relative" ref={menuRef}>
-                <button
-                  onClick={() => setIsMenuOpen(!isMenuOpen)}
-                  className="inline-flex items-center p-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 transition-colors"
-                >
-                  <Bars3Icon className="w-5 h-5" />
-                </button>
-
-                {isMenuOpen && (
-                  <div className="absolute left-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                    <div className="py-1">
-                      <Link
-                        to="/"
-                        className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                        onClick={() => setIsMenuOpen(false)}
-                      >
-                        <CalendarIcon className="w-4 h-4 mr-3" />
-                        Day View
-                      </Link>
-                      <Link
-                        to="/week"
-                        className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                        onClick={() => setIsMenuOpen(false)}
-                      >
-                        <CalendarIcon className="w-4 h-4 mr-3" />
-                        Week View
-                      </Link>
-                      <button
-                        type="button"
-                        className="flex w-full cursor-default items-center px-4 py-2 text-sm font-semibold text-orange-500"
-                      >
-                        <CalendarIcon className="w-4 h-4 mr-3" />
-                        Month View
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
 
-            <div className="flex items-center justify-between sm:justify-end space-x-2 sm:space-x-3">
+            {/* Center: Month Navigation */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => navigateMonth("prev")}
+                className="p-1.5 text-white/40 hover:text-white/80 rounded-lg hover:bg-white/[0.04] transition-colors"
+              >
+                <ChevronLeftIcon className="w-4 h-4" />
+              </button>
+              <div className="text-center">
+                <div className="text-sm font-semibold text-white">
+                  {format(viewDate, "MMMM yyyy")}
+                </div>
+                <div className="text-[11px] text-white/40 font-medium">
+                  {monthWeeks.length} week{monthWeeks.length === 1 ? "" : "s"}
+                </div>
+              </div>
+              <button
+                onClick={() => navigateMonth("next")}
+                className="p-1.5 text-white/40 hover:text-white/80 rounded-lg hover:bg-white/[0.04] transition-colors"
+              >
+                <ChevronRightIcon className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Right: Edit Mode */}
+            <div className="flex items-center gap-2">
               {canEdit && (
                 <button
                   onClick={toggleEditMode}
-                  className={`inline-flex items-center gap-1 sm:gap-2 rounded-lg border px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold transition-colors ${
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
                     isEditMode
-                      ? "border-orange-500 bg-orange-500 text-white hover:bg-orange-600"
-                      : "border-gray-300 bg-white text-gray-700 hover:bg-gray-100"
+                      ? "border-accent-500 bg-accent-500 text-white"
+                      : "border-white/[0.08] text-white/50 hover:bg-white/[0.04] hover:text-white/80"
                   }`}
                 >
-                  <PencilSquareIcon className="h-3 w-3 sm:h-4 sm:w-4" />
-                  <span className="hidden sm:inline">{isEditMode ? "Exit Edit Mode" : "Edit Mode"}</span>
-                  <span className="sm:hidden">{isEditMode ? "Exit" : "Edit"}</span>
+                  <PencilSquareIcon className="h-3.5 w-3.5" />
+                  {isEditMode ? "Editing" : "Edit"}
                 </button>
               )}
-              <div className="text-right min-w-0 flex-1 sm:flex-none">
-                <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">
-                  {showAllTeachers ? "All Teachers" : currentTeacherName}
-                </p>
-                <p className="text-xs text-gray-500 font-medium">Monthly Schedule</p>
-              </div>
-              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <span className="text-xs sm:text-sm font-semibold text-orange-700">
-                  {showAllTeachers ? "ALL" : `T${teacherId}`}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-center py-3 sm:py-0 sm:h-12 border-t border-gray-100">
-            <div className="flex items-center space-x-3 sm:space-x-6">
-              <button
-                onClick={() => navigateMonth("prev")}
-                className="p-1.5 sm:p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <ChevronLeftIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
-
-              <div className="text-center min-w-0 flex-1">
-                <h1 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
-                  {format(viewDate, "MMMM yyyy")}
-                </h1>
-                <p className="text-xs sm:text-sm text-gray-500 font-medium">
-                  {monthWeeks.length} week{monthWeeks.length === 1 ? "" : "s"}
-                </p>
-              </div>
-
-              <button
-                onClick={() => navigateMonth("next")}
-                className="p-1.5 sm:p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <ChevronRightIcon className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
             </div>
           </div>
         </div>
       </div>
 
       {error && (
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-4">
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+        <div className="page-container page-container-full pt-4">
+          <div className="rounded-lg border border-red-500/20 bg-red-500/[0.08] p-4">
             <div className="flex">
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">Error loading schedule</h3>
-                <p className="mt-1 text-sm text-red-700">{error}</p>
+                <h3 className="text-sm font-medium text-red-300">Error loading schedule</h3>
+                <p className="mt-1 text-sm text-red-400">{error}</p>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      <div className="mx-auto max-w-7xl px-2 sm:px-4 lg:px-8 py-3 sm:py-6">
+      <div className="page-container page-container-full py-3 sm:py-6">
         {isEditMode && canEdit && (
-          <div className="mb-3 sm:mb-4 flex items-start gap-2 sm:gap-3 rounded-lg border border-orange-200 bg-orange-50 px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-orange-800">
+          <div className="mb-3 sm:mb-4 flex items-start gap-2 sm:gap-3 rounded-lg border border-accent-500/20 bg-accent-500/[0.06] px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-accent-300">
             <PencilSquareIcon className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0 mt-0.5" />
             <span>
               Edit mode active. Click the <span className="font-semibold">+</span> button in any day to add a lesson,
@@ -684,8 +536,8 @@ export const MonthView: React.FC = () => {
           <div
             className={`mb-3 sm:mb-4 flex items-start gap-2 sm:gap-3 rounded-lg border px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm ${
               feedback.type === "success"
-                ? "border-green-200 bg-green-50 text-green-800"
-                : "border-red-200 bg-red-50 text-red-700"
+                ? "border-green-500/20 bg-green-500/[0.08] text-green-300"
+                : "border-red-500/20 bg-red-500/[0.08] text-red-400"
             }`}
           >
             {feedback.type === "success" ? (
@@ -732,9 +584,9 @@ export const MonthView: React.FC = () => {
 
       {lessonToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900">Delete Lesson</h3>
-            <p className="mt-2 text-sm text-gray-600">
+          <div className="w-full max-w-md rounded-lg bg-surface p-6 shadow-card">
+            <h3 className="text-lg font-semibold text-white">Delete Lesson</h3>
+            <p className="mt-2 text-sm text-white/60">
               Are you sure you want to delete the lesson <span className="font-semibold">{lessonToDelete.class_code}</span> with
               {" "}
               {lessonToDelete.teacher_name} on {lessonToDelete.day} at {lessonToDelete.start_time}?
@@ -742,7 +594,7 @@ export const MonthView: React.FC = () => {
             <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="rounded-md border border-white/[0.08] px-4 py-2 text-sm font-medium text-white/70 hover:bg-base"
                 onClick={() => setLessonToDelete(null)}
               >
                 Cancel
@@ -773,25 +625,25 @@ type SectionProps = {
 function Section({ title, icon, accent, count }: SectionProps) {
   const accentClass =
     accent === "orange"
-      ? "bg-orange-50 text-orange-600"
+      ? "bg-accent-500/[0.06] text-accent-400"
       : accent === "purple"
-        ? "bg-purple-50 text-purple-600"
-        : "bg-emerald-50 text-emerald-600";
+        ? "bg-purple-600/[0.08] text-purple-400"
+        : "bg-emerald-600/[0.08] text-emerald-400";
 
   return (
-    <div className="flex items-center justify-between text-xs uppercase tracking-wider text-gray-400">
+    <div className="flex items-center justify-between text-xs uppercase tracking-wider text-white/40">
       <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 ${accentClass}`}>
         {icon}
         {title}
       </div>
-      <span className="text-gray-300">{count}</span>
+      <span className="text-white/30">{count}</span>
     </div>
   );
 }
 
 function EmptyState({ search, label }: { search: string; label: string }) {
   return (
-    <p className="rounded-lg border border-dashed border-gray-200 px-3 py-4 text-center text-xs text-gray-400">
+    <p className="rounded-lg border border-dashed border-white/[0.06] px-3 py-4 text-center text-xs text-white/40">
       {search ? `No ${label} match your search.` : `${label[0].toUpperCase()}${label.slice(1)} list coming soon.`}
     </p>
   );
@@ -807,13 +659,13 @@ type TeacherOptionProps = {
 
 function TeacherOption({ teacher, isActive, onSelect, badge, accent }: TeacherOptionProps) {
   const baseClass = "flex items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition";
-  let accentClass = "text-gray-700 hover:bg-gray-50 hover:text-gray-900";
+  let accentClass = "text-white/70 hover:bg-base hover:text-white";
   if (accent === "orange") {
-    accentClass = isActive ? "bg-orange-500 text-white shadow-sm" : "text-gray-700 hover:bg-orange-50 hover:text-orange-600";
+    accentClass = isActive ? "bg-accent-500 text-white shadow-glass" : "text-white/70 hover:bg-accent-500/[0.06] hover:text-accent-400";
   } else if (accent === "purple") {
-    accentClass = isActive ? "bg-purple-500 text-white shadow-sm" : "text-gray-700 hover:bg-purple-50 hover:text-purple-600";
+    accentClass = isActive ? "bg-purple-600/[0.08]0 text-white shadow-glass" : "text-white/70 hover:bg-purple-600/[0.08] hover:text-purple-400";
   } else if (accent === "emerald") {
-    accentClass = isActive ? "bg-emerald-500 text-white shadow-sm" : "text-gray-700 hover:bg-emerald-50 hover:text-emerald-600";
+    accentClass = isActive ? "bg-emerald-600/[0.08]0 text-white shadow-glass" : "text-white/70 hover:bg-emerald-600/[0.08] hover:text-emerald-400";
   }
 
   return (

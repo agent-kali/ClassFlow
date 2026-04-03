@@ -514,18 +514,18 @@ export default function LessonModal({
         {/* Modal */}
         <div className="modal-surface w-full max-w-2xl">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-orange-50 to-white">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06] bg-gradient-to-r from-orange-50 to-white">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">
+              <h3 className="text-lg font-semibold text-white">
                 {lesson ? '✏️ Edit Lesson' : '✨ Schedule a New Lesson'}
               </h3>
-              <p className="text-sm text-gray-500 mt-0.5">
+              <p className="text-sm text-white/50 mt-0.5">
                 {lesson ? 'Update lesson details' : 'Fill in the details to create a lesson'}
               </p>
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-white/40 hover:text-white/60 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -537,14 +537,14 @@ export default function LessonModal({
           <form onSubmit={handleSubmit} className="px-6 py-5 space-y-6">
             {/* Status Messages */}
             {error && (
-              <div className="bg-red-50 border-l-4 border-red-400 rounded-r-lg p-3">
+              <div className="bg-red-500/[0.08] border-l-4 border-red-400 rounded-r-lg p-3">
                 <div className="flex items-start">
                   <svg className="w-5 h-5 text-red-400 mt-0.5 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                   </svg>
                   <div>
-                    <p className="font-medium text-sm text-red-800">Oops!</p>
-                    <p className="text-sm text-red-700 mt-0.5">{error}</p>
+                    <p className="font-medium text-sm text-red-300">Oops!</p>
+                    <p className="text-sm text-red-400 mt-0.5">{error}</p>
                   </div>
                 </div>
               </div>
@@ -563,14 +563,14 @@ export default function LessonModal({
             )}
 
             {conflicts.length > 0 && !checkingConflicts && (
-              <div className="bg-red-50 border-l-4 border-red-400 rounded-r-lg p-3">
+              <div className="bg-red-500/[0.08] border-l-4 border-red-400 rounded-r-lg p-3">
                 <div className="flex items-start">
                   <svg className="w-5 h-5 text-red-400 mt-0.5 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                   </svg>
                   <div className="flex-1">
-                    <h4 className="font-medium text-sm text-red-800 mb-1.5">⚠️ Scheduling Conflict</h4>
-                    <ul className="text-sm text-red-700 space-y-1">
+                    <h4 className="font-medium text-sm text-red-300 mb-1.5">⚠️ Scheduling Conflict</h4>
+                    <ul className="text-sm text-red-400 space-y-1">
                       {conflicts.map((conflict, index) => (
                         <li key={index} className="flex items-start">
                           <span className="mr-2">•</span>
@@ -584,26 +584,26 @@ export default function LessonModal({
             )}
 
             {conflicts.length === 0 && !checkingConflicts && formData.teacher_id && formData.class_id && formData.start_time && formData.end_time && formData.room && formData.day && (
-              <div className="bg-green-50 border-l-4 border-green-400 rounded-r-lg p-3">
+              <div className="bg-green-500/[0.08] border-l-4 border-green-400 rounded-r-lg p-3">
                 <div className="flex items-center">
                   <svg className="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                   </svg>
-                  <span className="text-sm font-medium text-green-700">✅ All clear! Ready to schedule</span>
+                  <span className="text-sm font-medium text-green-400">✅ All clear! Ready to schedule</span>
                 </div>
               </div>
             )}
 
             {/* Mad Libs Style Sentence Builder */}
-            <div className="bg-gradient-to-br from-gray-50 to-white border-2 border-gray-200 rounded-xl p-5 space-y-4">
-              <div className="flex flex-wrap items-center gap-2 text-gray-700">
+            <div className="bg-gradient-to-br from-gray-50 to-white border-2 border-white/[0.06] rounded-xl p-5 space-y-4">
+              <div className="flex flex-wrap items-center gap-2 text-white/70">
                 <span className="text-base">Schedule a lesson for</span>
                 <div className="relative inline-block">
                   {selectedClass && searchTerm.class === '' ? (
                     <button
                       type="button"
                       onClick={() => setSearchTerm(prev => ({ ...prev, class: selectedClass.code_new || '' }))}
-                      className="inline-flex items-center px-3 py-1.5 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg font-semibold text-base transition-colors border-2 border-orange-300"
+                      className="inline-flex items-center px-3 py-1.5 bg-accent-500/15 hover:bg-orange-200 text-accent-300 rounded-lg font-semibold text-base transition-colors border-2 border-orange-300"
                     >
                       {selectedClass.code_new || selectedClass.name}
                       <svg className="w-4 h-4 ml-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -618,10 +618,10 @@ export default function LessonModal({
                         value={searchTerm.class}
                         onChange={(e) => handleSearchChange('class', e.target.value)}
                         onFocus={() => searchTerm.class === '' && setSearchTerm(prev => ({ ...prev, class: ' ' }))}
-                        className="px-3 py-1.5 w-48 bg-white text-gray-700 border-2 border-dashed border-gray-300 rounded-lg text-base focus:border-orange-400 focus:outline-none transition-colors"
+                        className="px-3 py-1.5 w-48 bg-surface text-white/70 border-2 border-dashed border-white/[0.08] rounded-lg text-base focus:border-accent-500/40 focus:outline-none transition-colors"
                       />
                       {searchTerm.class.trim() !== '' && (
-                        <div className="absolute z-10 mt-2 w-72 dropdown-panel shadow-xl">
+                        <div className="absolute z-10 mt-2 w-72 dropdown-panel shadow-card">
                           {filteredClasses.map(cls => (
                             <button
                               key={cls.class_id}
@@ -632,8 +632,8 @@ export default function LessonModal({
                               }}
                               className={`flex w-full items-start px-4 py-2.5 text-sm ${
                                 formData.class_id === cls.class_id.toString()
-                                  ? 'bg-orange-500 text-white'
-                                  : 'hover:bg-orange-50 text-gray-700'
+                                  ? 'bg-accent-500 text-white'
+                                  : 'hover:bg-accent-500/[0.06] text-white/70'
                               }`}
                             >
                               <div className="flex flex-col items-start">
@@ -643,7 +643,7 @@ export default function LessonModal({
                             </button>
                           ))}
                           {filteredClasses.length === 0 && (
-                            <div className="px-4 py-3 text-sm text-gray-500">No classes found</div>
+                            <div className="px-4 py-3 text-sm text-white/50">No classes found</div>
                           )}
                         </div>
                       )}
@@ -652,14 +652,14 @@ export default function LessonModal({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 text-gray-700">
+              <div className="flex flex-wrap items-center gap-2 text-white/70">
                 <span className="text-base">with</span>
                 <div className="relative inline-block">
                   {selectedTeacher && searchTerm.teacher === '' ? (
                     <button
                       type="button"
                       onClick={() => setSearchTerm(prev => ({ ...prev, teacher: selectedTeacher.name }))}
-                      className="inline-flex items-center px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg font-semibold text-base transition-colors border-2 border-blue-300"
+                      className="inline-flex items-center px-3 py-1.5 bg-blue-500/15 hover:bg-blue-200 text-blue-700 rounded-lg font-semibold text-base transition-colors border-2 border-blue-300"
                     >
                       👨‍🏫 {selectedTeacher.name}
                       <svg className="w-4 h-4 ml-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -674,10 +674,10 @@ export default function LessonModal({
                         value={searchTerm.teacher}
                         onChange={(e) => handleSearchChange('teacher', e.target.value)}
                         onFocus={() => searchTerm.teacher === '' && setSearchTerm(prev => ({ ...prev, teacher: ' ' }))}
-                        className="px-3 py-1.5 w-48 bg-white text-gray-700 border-2 border-dashed border-gray-300 rounded-lg text-base focus:border-blue-400 focus:outline-none transition-colors"
+                        className="px-3 py-1.5 w-48 bg-surface text-white/70 border-2 border-dashed border-white/[0.08] rounded-lg text-base focus:border-blue-400 focus:outline-none transition-colors"
                       />
                       {searchTerm.teacher.trim() !== '' && (
-                        <div className="absolute z-10 mt-2 w-64 dropdown-panel shadow-xl">
+                        <div className="absolute z-10 mt-2 w-64 dropdown-panel shadow-card">
                           {filteredTeachers.map(teacher => (
                             <button
                               key={teacher.teacher_id}
@@ -689,7 +689,7 @@ export default function LessonModal({
                               className={`flex w-full items-center justify-between px-4 py-2.5 text-sm ${
                                 formData.teacher_id === teacher.teacher_id.toString()
                                   ? 'bg-blue-500 text-white'
-                                  : 'hover:bg-blue-50 text-gray-700'
+                                  : 'hover:bg-blue-50 text-white/70'
                               }`}
                             >
                               <span className="font-medium">{teacher.name}</span>
@@ -701,7 +701,7 @@ export default function LessonModal({
                             </button>
                           ))}
                           {filteredTeachers.length === 0 && (
-                            <div className="px-4 py-3 text-sm text-gray-500">No teachers found</div>
+                            <div className="px-4 py-3 text-sm text-white/50">No teachers found</div>
                           )}
                         </div>
                       )}
@@ -731,10 +731,10 @@ export default function LessonModal({
                         placeholder="co-teacher..."
                         value={searchTerm.co_teacher}
                         onChange={(e) => handleSearchChange('co_teacher', e.target.value)}
-                        className="px-3 py-1.5 w-40 bg-white text-gray-700 border-2 border-dashed border-gray-300 rounded-lg text-base focus:border-purple-400 focus:outline-none transition-colors"
+                        className="px-3 py-1.5 w-40 bg-surface text-white/70 border-2 border-dashed border-white/[0.08] rounded-lg text-base focus:border-purple-400 focus:outline-none transition-colors"
                       />
                       {searchTerm.co_teacher.trim() !== '' && (
-                        <div className="absolute z-10 mt-2 w-64 dropdown-panel shadow-xl">
+                        <div className="absolute z-10 mt-2 w-64 dropdown-panel shadow-card">
                           {filteredCoTeachers.map(teacher => (
                             <button
                               key={teacher.teacher_id}
@@ -745,15 +745,15 @@ export default function LessonModal({
                               }}
                               className={`flex w-full items-center px-4 py-2.5 text-sm ${
                                 formData.co_teacher_id === teacher.teacher_id.toString()
-                                  ? 'bg-purple-500 text-white'
-                                  : 'hover:bg-purple-50 text-gray-700'
+                                  ? 'bg-purple-600/[0.08]0 text-white'
+                                  : 'hover:bg-purple-600/[0.08] text-white/70'
                               }`}
                             >
                               <span className="font-medium">{teacher.name}</span>
                             </button>
                           ))}
                           {filteredCoTeachers.length === 0 && (
-                            <div className="px-4 py-3 text-sm text-gray-500">No co-teachers found</div>
+                            <div className="px-4 py-3 text-sm text-white/50">No co-teachers found</div>
                           )}
                         </div>
                       )}
@@ -763,14 +763,14 @@ export default function LessonModal({
                   <button
                     type="button"
                     onClick={() => setSearchTerm(prev => ({ ...prev, co_teacher: ' ' }))}
-                    className="text-sm text-gray-400 hover:text-gray-600 underline transition-colors"
+                    className="text-sm text-white/40 hover:text-white/60 underline transition-colors"
                   >
                     + co-teacher
                   </button>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 text-gray-700">
+              <div className="flex flex-wrap items-center gap-2 text-white/70">
                 <span className="text-base">in room</span>
                 <div className="relative inline-block">
                   <select
@@ -779,7 +779,7 @@ export default function LessonModal({
                     className={`inline-flex px-3 py-1.5 pr-8 rounded-lg font-semibold text-base border-2 transition-colors appearance-none cursor-pointer ${
                       formData.room
                         ? 'bg-teal-100 text-teal-700 border-teal-300'
-                        : 'bg-white text-gray-400 border-dashed border-gray-300'
+                        : 'bg-surface text-white/40 border-dashed border-white/[0.08]'
                     }`}
                   >
                     <option value="">select room</option>
@@ -787,7 +787,7 @@ export default function LessonModal({
                       <option key={room} value={room}>{room}</option>
                     ))}
                   </select>
-                  <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </div>
@@ -805,7 +805,7 @@ export default function LessonModal({
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 text-gray-700">
+              <div className="flex flex-wrap items-center gap-2 text-white/70">
                 <span className="text-base">from</span>
                 <input
                   type="time"
@@ -815,8 +815,8 @@ export default function LessonModal({
                   max="20:30"
                   className={`inline-flex px-3 py-1.5 rounded-lg font-semibold text-base border-2 transition-colors cursor-pointer ${
                     formData.start_time
-                      ? 'bg-green-100 text-green-700 border-green-300'
-                      : 'bg-white text-gray-400 border-dashed border-gray-300'
+                      ? 'bg-green-500/15 text-green-400 border-green-300'
+                      : 'bg-surface text-white/40 border-dashed border-white/[0.08]'
                   }`}
                   required
                 />
@@ -829,27 +829,27 @@ export default function LessonModal({
                   max="20:30"
                   className={`inline-flex px-3 py-1.5 rounded-lg font-semibold text-base border-2 transition-colors cursor-pointer ${
                     formData.end_time
-                      ? 'bg-green-100 text-green-700 border-green-300'
-                      : 'bg-white text-gray-400 border-dashed border-gray-300'
+                      ? 'bg-green-500/15 text-green-400 border-green-300'
+                      : 'bg-surface text-white/40 border-dashed border-white/[0.08]'
                   }`}
                   required
                 />
-                <span className="text-xs text-gray-500">(17:00 - 20:30 only)</span>
+                <span className="text-xs text-white/50">(17:00 - 20:30 only)</span>
               </div>
 
               {/* Visual Summary */}
               {(selectedClass || selectedTeacher || formData.room || formData.start_time) && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="mt-4 pt-4 border-t border-white/[0.06]">
                   <div className="flex items-start">
-                    <svg className="w-5 h-5 text-gray-400 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-white/40 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
-                    <div className="text-sm text-gray-600 space-y-1">
-                      <p className="font-medium text-gray-700">Quick Summary:</p>
+                    <div className="text-sm text-white/60 space-y-1">
+                      <p className="font-medium text-white/70">Quick Summary:</p>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
                         <div className="flex items-center">
-                          <span className="w-16 text-gray-500">Date:</span>
-                          <span className="font-medium text-gray-900">
+                          <span className="w-16 text-white/50">Date:</span>
+                          <span className="font-medium text-white">
                             {selectedDate ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { 
                               weekday: 'short', 
                               month: 'short', 
@@ -860,32 +860,32 @@ export default function LessonModal({
                         </div>
                         {selectedClass && (
                           <div className="flex items-center">
-                            <span className="w-16 text-gray-500">Class:</span>
-                            <span className="font-medium text-gray-900">{selectedClass.code_new || selectedClass.name}</span>
+                            <span className="w-16 text-white/50">Class:</span>
+                            <span className="font-medium text-white">{selectedClass.code_new || selectedClass.name}</span>
                           </div>
                         )}
                         {selectedTeacher && (
                           <div className="flex items-center">
-                            <span className="w-16 text-gray-500">Teacher:</span>
-                            <span className="font-medium text-gray-900">{selectedTeacher.name}</span>
+                            <span className="w-16 text-white/50">Teacher:</span>
+                            <span className="font-medium text-white">{selectedTeacher.name}</span>
                           </div>
                         )}
                         {selectedCoTeacher && (
                           <div className="flex items-center">
-                            <span className="w-16 text-gray-500">Co-teach:</span>
-                            <span className="font-medium text-gray-900">{selectedCoTeacher.name}</span>
+                            <span className="w-16 text-white/50">Co-teach:</span>
+                            <span className="font-medium text-white">{selectedCoTeacher.name}</span>
                           </div>
                         )}
                         {formData.room && (
                           <div className="flex items-center">
-                            <span className="w-16 text-gray-500">Room:</span>
-                            <span className="font-medium text-gray-900">{formData.room}</span>
+                            <span className="w-16 text-white/50">Room:</span>
+                            <span className="font-medium text-white">{formData.room}</span>
                           </div>
                         )}
                         {(formData.start_time || formData.end_time) && (
                           <div className="flex items-center">
-                            <span className="w-16 text-gray-500">Time:</span>
-                            <span className="font-medium text-gray-900">
+                            <span className="w-16 text-white/50">Time:</span>
+                            <span className="font-medium text-white">
                               {formData.start_time || '--:--'} - {formData.end_time || '--:--'}
                             </span>
                           </div>
@@ -899,19 +899,19 @@ export default function LessonModal({
 
             {/* Collapsible Advanced Section */}
             <details className="group">
-              <summary className="flex items-center justify-between cursor-pointer text-sm text-gray-600 hover:text-gray-900 transition-colors py-2 px-3 rounded-lg hover:bg-gray-50">
+              <summary className="flex items-center justify-between cursor-pointer text-sm text-white/60 hover:text-white transition-colors py-2 px-3 rounded-lg hover:bg-base">
                 <span className="flex items-center">
                   <svg className="w-4 h-4 mr-2 group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                   Additional options
                 </span>
-                <span className="text-xs text-gray-400">Notes, etc.</span>
+                <span className="text-xs text-white/40">Notes, etc.</span>
               </summary>
               <div className="mt-3 space-y-3 pl-6">
                 <div>
-                  <label className="flex items-center text-sm font-medium text-gray-700 mb-1.5">
-                    <svg className="w-4 h-4 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <label className="flex items-center text-sm font-medium text-white/70 mb-1.5">
+                    <svg className="w-4 h-4 mr-2 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
                     </svg>
                     Notes (Optional)
@@ -920,7 +920,7 @@ export default function LessonModal({
                     value={formData.notes}
                     onChange={(e) => handleInputChange('notes', e.target.value)}
                     rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none text-sm"
+                    className="w-full px-3 py-2 border border-white/[0.08] rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-accent-500 resize-none text-sm"
                     placeholder="Any additional information about this lesson..."
                   />
                 </div>
@@ -928,8 +928,8 @@ export default function LessonModal({
             </details>
 
             {/* Action Buttons */}
-            <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-              <div className="text-xs text-gray-500">
+            <div className="flex items-center justify-between pt-4 border-t border-white/[0.06]">
+              <div className="text-xs text-white/50">
                 {formData.teacher_id && formData.class_id && formData.room && formData.start_time && formData.end_time ? (
                   <span className="flex items-center text-green-600">
                     <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -945,14 +945,14 @@ export default function LessonModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-all"
+                  className="px-5 py-2.5 text-sm font-medium text-white/70 bg-surface border-2 border-white/[0.08] rounded-lg hover:bg-base hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent-500 transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSaving || loading || conflicts.length > 0}
-                  className="px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-orange-600 to-orange-500 border border-transparent rounded-lg hover:from-orange-700 hover:to-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-400 transition-all shadow-sm hover:shadow-md"
+                  className="px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-orange-600 to-orange-500 border border-transparent rounded-lg hover:from-orange-700 hover:to-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-400 transition-all shadow-glass hover:shadow-md"
                 >
                   {isSaving || loading ? (
                     <span className="flex items-center">

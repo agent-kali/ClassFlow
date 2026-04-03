@@ -167,9 +167,9 @@ export default function WeekGridLite({ lessons, weekStart }: Props) {
   return (
     <div className="h-full overflow-hidden flex flex-col">
       {/* Sticky header */}
-      <div className="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm">
+      <div className="sticky top-0 z-20 bg-surface border-b border-white/[0.06] shadow-glass">
         <div className="week-grid-container">
-          <div className="p-3 bg-gray-50 border-r border-gray-300 text-sm font-medium text-gray-700 text-center">
+          <div className="p-3 bg-base border-r border-white/[0.08] text-sm font-medium text-white/70 text-center">
             Time
           </div>
           {DAYS.map((day, i) => {
@@ -180,10 +180,10 @@ export default function WeekGridLite({ lessons, weekStart }: Props) {
             return (
               <div
                 key={day}
-                className={`p-3 text-center border-r border-gray-200 transition-colors ${
+                className={`p-3 text-center border-r border-white/[0.06] transition-colors ${
                   isToday 
-                    ? 'bg-orange-50 text-orange-900 border-orange-200' 
-                    : 'bg-gray-50 text-gray-700'
+                    ? 'bg-accent-500/[0.06] text-orange-900 border-accent-500/20' 
+                    : 'bg-base text-white/70'
                 }`}
               >
                 <div className={`text-sm ${
@@ -192,7 +192,7 @@ export default function WeekGridLite({ lessons, weekStart }: Props) {
                   {day}
                 </div>
                 <div className={`text-xs ${
-                  isToday ? 'text-orange-600 font-medium' : 'text-gray-500'
+                  isToday ? 'text-accent-400 font-medium' : 'text-white/50'
                 }`}>
                   {format(date, 'MMM d')}
                 </div>
@@ -218,7 +218,7 @@ export default function WeekGridLite({ lessons, weekStart }: Props) {
                 className={`time-slot ${slot.isHour ? 'hour' : 'half'}`}
                 style={{ gridRow: index + 1 }}
               >
-                <span className={`tabular-nums ${slot.isHour ? 'font-semibold text-gray-900' : 'font-medium text-gray-500'}`}>
+                <span className={`tabular-nums ${slot.isHour ? 'font-semibold text-white' : 'font-medium text-white/50'}`}>
                   {slot.label}
                 </span>
                 {!slot.isHour && (
@@ -253,8 +253,8 @@ export default function WeekGridLite({ lessons, weekStart }: Props) {
                     <div
                       key={i}
                       className={i % 2 === 0
-                        ? "border-b border-gray-300/90"
-                        : "border-b border-dashed border-gray-300/70"}
+                        ? "border-b border-white/[0.08]/90"
+                        : "border-b border-dashed border-white/[0.08]/70"}
                     />
                   ))}
                 </div>
@@ -383,7 +383,7 @@ export default function WeekGridLite({ lessons, weekStart }: Props) {
               <>
                 {/* Time rail dot indicator */}
                 <div
-                  className="w-2 h-2 bg-red-500 rounded-full z-40 justify-self-center border border-white shadow-sm"
+                  className="w-2 h-2 bg-red-500/[0.08]0 rounded-full z-40 justify-self-center border border-white shadow-glass"
                   style={{
                     gridColumn: 1,
                     gridRow: slotIndex + 1,
@@ -394,7 +394,7 @@ export default function WeekGridLite({ lessons, weekStart }: Props) {
                 
                 {/* Now line across all day columns */}
                 <div
-                  className="h-0.5 bg-red-500 z-30 col-span-7 mx-1 shadow-sm"
+                  className="h-0.5 bg-red-500/[0.08]0 z-30 col-span-7 mx-1 shadow-glass"
                   style={{
                     gridColumn: '2 / 9', // spans all 7 day columns
                     gridRow: slotIndex + 1,

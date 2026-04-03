@@ -117,15 +117,15 @@ export default function MonthGrid({
   }, [lessons]);
 
   return (
-    <div className="w-full overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
-      <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50/70 text-xs font-semibold uppercase tracking-wide text-gray-500">
+    <div className="w-full overflow-hidden rounded-3xl border border-white/[0.06] bg-surface shadow-glass">
+      <div className="grid grid-cols-7 border-b border-white/[0.04] bg-base/70 text-xs font-semibold uppercase tracking-wide text-white/50">
         {weekdays.map((day) => (
           <div key={day} className="px-3 py-2 text-center sm:px-4 sm:py-3">
             {day}
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-1 divide-y divide-gray-100 sm:grid-cols-7 sm:divide-x sm:divide-y-0">
+      <div className="grid grid-cols-7">
         {daysInView.map((date) => {
           const key = format(date, "yyyy-MM-dd");
           const dayLessons = lessonMap.get(key) ?? [];
@@ -184,16 +184,16 @@ function DayCell({
 
   return (
     <div
-      className={`group relative flex min-h-[120px] flex-col border-b border-gray-100 bg-gradient-to-br p-1.5 sm:p-2 transition-colors sm:min-h-[180px] sm:border-b-0 sm:border-r ${
+      className={`group relative flex min-h-[120px] flex-col border-b border-r border-white/[0.04] p-1.5 sm:p-2 transition-colors sm:min-h-[180px] ${
         isToday
-          ? "from-orange-50 via-white to-white ring-2 ring-offset-2 ring-orange-400"
+          ? "bg-accent-500/[0.06] ring-1 ring-inset ring-accent-500/20"
           : isCurrentMonth
-            ? "from-white via-white to-gray-50"
-            : "from-gray-50 via-white to-white opacity-70"
-      } ${isWeekend ? "bg-opacity-95" : ""}`}
+            ? "bg-elevated/70 hover:bg-elevated"
+            : "bg-base/60 opacity-60"
+      }`}
     >
       <div className="flex items-center justify-between">
-        <div className={`text-xs sm:text-sm font-semibold ${isCurrentMonth ? "text-gray-900" : "text-gray-400"}`}>
+        <div className={`text-xs sm:text-sm font-semibold ${isCurrentMonth ? "text-white" : "text-white/40"}`}>
           {dayLabel}
         </div>
 
@@ -201,7 +201,7 @@ function DayCell({
           <button
             type="button"
             onClick={() => onAddLesson(new Date(date))}
-            className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-orange-200 text-orange-500 shadow transition-all duration-200 hover:bg-orange-500 hover:text-white focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-offset-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+            className="flex h-6 w-6 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-accent-500/20 text-accent-400 transition-all duration-200 hover:bg-accent-500 hover:text-white focus:outline-none focus:ring-2 focus:ring-accent-500 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
             title="Add lesson"
           >
             <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -222,13 +222,13 @@ function DayCell({
         ))}
 
         {extraCount > 0 && (
-          <div className="rounded-lg border border-dashed border-orange-300 bg-orange-50/80 px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-medium text-orange-700">
+          <div className="rounded-lg border border-dashed border-accent-500/30 bg-accent-500/[0.06] px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-xs font-medium text-accent-300">
             +{extraCount} more
           </div>
         )}
 
         {!lessons.length && !isEditMode && (
-          <div className="mt-auto rounded-lg border border-dashed border-gray-200 bg-white/60 px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-xs text-gray-400">
+          <div className="mt-auto rounded-lg border border-dashed border-white/[0.06] bg-surface/60 px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-xs text-white/40">
             No lessons
           </div>
         )}
@@ -254,33 +254,33 @@ function LessonChip({
   const teacher = lesson.teacher_name;
 
   return (
-    <div className="group relative overflow-hidden rounded-lg sm:rounded-xl border border-gray-100 bg-white/95 shadow-sm transition hover:border-orange-200 hover:shadow-md">
+    <div className="group relative overflow-hidden rounded-lg sm:rounded-xl border border-white/[0.04] bg-surface/95 shadow-glass transition hover:border-accent-500/20 hover:shadow-md">
       <button
         type="button"
         onClick={() => onLessonEdit?.(lesson)}
         className="flex w-full flex-col items-start gap-0.5 sm:gap-1 px-2 sm:px-3 py-1.5 sm:py-2 text-left focus:outline-none"
       >
-        <div className="flex w-full items-center justify-between text-[10px] sm:text-xs font-semibold text-gray-500">
-          <span className="tabular-nums text-gray-700">
+        <div className="flex w-full items-center justify-between text-[10px] sm:text-xs font-semibold text-white/50">
+          <span className="tabular-nums text-white/70">
             {lesson.start_time?.slice(0, 5)} – {lesson.end_time?.slice(0, 5)}
           </span>
           {campus && (
-            <span className="rounded-full bg-gray-100 px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] uppercase tracking-wide text-gray-600">
+            <span className="rounded-full bg-elevated px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] uppercase tracking-wide text-white/60">
               {campus}
             </span>
           )}
         </div>
-        <div className="text-xs sm:text-sm font-semibold text-gray-900 truncate w-full">
+        <div className="text-xs sm:text-sm font-semibold text-white truncate w-full">
           {lesson.class_code ?? "Unnamed"}
         </div>
-        <div className="flex w-full flex-wrap items-center gap-1 sm:gap-2 text-[9px] sm:text-[11px] text-gray-500">
+        <div className="flex w-full flex-wrap items-center gap-1 sm:gap-2 text-[9px] sm:text-[11px] text-white/50">
           {lesson.room && (
-            <span className="rounded-full border border-gray-200 bg-gray-50 px-1.5 sm:px-2 py-0.5 text-gray-600">
+            <span className="rounded-full border border-white/[0.06] bg-base px-1.5 sm:px-2 py-0.5 text-white/60">
               {lesson.room}
             </span>
           )}
           {showTeacherName && teacher && (
-            <span className="flex items-center gap-1 text-gray-600 truncate">
+            <span className="flex items-center gap-1 text-white/60 truncate">
               <EllipsisHorizontalIcon className="h-2 w-2 sm:h-3 sm:w-3 flex-shrink-0" />
               <span className="truncate">{teacher}</span>
             </span>
@@ -297,7 +297,7 @@ function LessonChip({
                 event.stopPropagation();
                 onLessonEdit(lesson);
               }}
-              className="flex h-5 w-5 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-white/90 text-orange-600 shadow ring-1 ring-orange-200 hover:bg-orange-50 hover:text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500"
+              className="flex h-5 w-5 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-surface/90 text-accent-400 shadow ring-1 ring-orange-200 hover:bg-accent-500/[0.06] hover:text-accent-300 focus:outline-none focus:ring-2 focus:ring-accent-500"
               title="Edit lesson"
             >
               <PencilSquareIcon className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -310,7 +310,7 @@ function LessonChip({
                 event.stopPropagation();
                 onLessonDelete(lesson);
               }}
-              className="flex h-5 w-5 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-white/90 text-red-600 shadow ring-1 ring-red-200 hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+              className="flex h-5 w-5 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-surface/90 text-red-400 shadow ring-1 ring-red-200 hover:bg-red-500/[0.08] hover:text-red-400 focus:outline-none focus:ring-2 focus:ring-red-500"
               title="Delete lesson"
             >
               <TrashIcon className="h-3 w-3 sm:h-4 sm:w-4" />
