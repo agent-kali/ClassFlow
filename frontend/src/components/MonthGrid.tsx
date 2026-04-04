@@ -227,11 +227,7 @@ function DayCell({
           </div>
         )}
 
-        {!lessons.length && !isEditMode && (
-          <div className="mt-auto rounded-lg border border-dashed border-white/[0.06] bg-surface/60 px-1.5 sm:px-2 py-2 sm:py-3 text-center text-[10px] sm:text-xs text-white/40">
-            No lessons
-          </div>
-        )}
+{/* empty cells left visually quiet */}
       </div>
     </div>
   );

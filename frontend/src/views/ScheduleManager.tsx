@@ -250,7 +250,8 @@ const ScheduleManager: React.FC = () => {
       setBulkLoading(true);
       await api.bulkMoveLessons({
         lesson_ids: Array.from(selectedLessons),
-        target_day: targetDay
+        target_day: targetDay,
+        target_week: 0
       });
       setError('');
       await loadLessons();
@@ -321,17 +322,17 @@ const ScheduleManager: React.FC = () => {
           <div className="flex gap-3">
             <button
               onClick={toggleBulkMode}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 bulkMode 
-                  ? 'bg-accent-600 hover:bg-orange-700 text-white' 
-                  : 'bg-gray-200 hover:bg-gray-300 text-white/70'
+                  ? 'bg-accent-600 hover:bg-accent-700 text-white' 
+                  : 'border border-white/[0.08] bg-white/[0.04] text-white/60 hover:text-white/90 hover:bg-white/[0.06]'
               }`}
             >
               {bulkMode ? 'Exit Bulk Mode' : 'Bulk Mode'}
             </button>
             <button
               onClick={handleAddLesson}
-              className="bg-accent-600 hover:bg-orange-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+              className="bg-accent-600 hover:bg-accent-700 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-card transition-all"
             >
               Add Lesson
             </button>
@@ -346,67 +347,65 @@ const ScheduleManager: React.FC = () => {
 
         {/* Bulk Operations Toolbar */}
         {bulkMode && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <div className="flex items-center justify-between">
+          <div className="bg-elevated border border-accent-500/20 rounded-2xl p-4 mb-6">
+            <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedLessons.size === filteredLessons.filter(l => l.id).length && filteredLessons.filter(l => l.id).length > 0}
-                      onChange={selectAllLessons}
-                      className="rounded border-white/[0.08] text-accent-400 focus:ring-accent-500"
-                    />
-                    <span className="text-sm font-medium text-white/70">
-                      Select All ({selectedLessons.size} selected)
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => {
-                      const pageLessonIds = currentLessons.filter(l => l.id).map(l => l.id!);
-                      const allSelected = pageLessonIds.every(id => selectedLessons.has(id));
-                      const newSelection = new Set(selectedLessons);
-                      
-                      if (allSelected) {
-                        pageLessonIds.forEach(id => newSelection.delete(id));
-                      } else {
-                        pageLessonIds.forEach(id => newSelection.add(id));
-                      }
-                      setSelectedLessons(newSelection);
-                    }}
-                    className="text-sm text-accent-400 hover:text-accent-300 underline"
-                  >
-                    Select Page
-                  </button>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedLessons.size === filteredLessons.filter(l => l.id).length && filteredLessons.filter(l => l.id).length > 0}
+                    onChange={selectAllLessons}
+                    className="rounded border-white/[0.08] text-accent-400 focus:ring-accent-500"
+                  />
+                  <span className="text-sm font-medium text-white/70">
+                    Select All ({selectedLessons.size} selected)
+                  </span>
                 </div>
+                <button
+                  onClick={() => {
+                    const pageLessonIds = currentLessons.filter(l => l.id).map(l => l.id!);
+                    const allSelected = pageLessonIds.every(id => selectedLessons.has(id));
+                    const newSelection = new Set(selectedLessons);
+                    
+                    if (allSelected) {
+                      pageLessonIds.forEach(id => newSelection.delete(id));
+                    } else {
+                      pageLessonIds.forEach(id => newSelection.add(id));
+                    }
+                    setSelectedLessons(newSelection);
+                  }}
+                  className="text-sm text-accent-400 hover:text-accent-300 underline"
+                >
+                  Select Page
+                </button>
               </div>
               
               <div className="flex gap-2">
                 <button
                   onClick={handleBulkCopy}
                   disabled={selectedLessons.size === 0 || bulkLoading}
-                  className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-md transition-colors"
+                  className="px-3 py-1.5 text-sm bg-blue-600/80 hover:bg-blue-600 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
                 >
                   Copy to Week
                 </button>
                 <button
                   onClick={handleBulkMove}
                   disabled={selectedLessons.size === 0 || bulkLoading}
-                  className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white rounded-md transition-colors"
+                  className="px-3 py-1.5 text-sm bg-green-600/80 hover:bg-green-600 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
                 >
                   Move to Day
                 </button>
                 <button
                   onClick={handleBulkAssign}
                   disabled={selectedLessons.size === 0 || bulkLoading}
-                  className="px-3 py-1.5 text-sm bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white rounded-md transition-colors"
+                  className="px-3 py-1.5 text-sm bg-purple-600/80 hover:bg-purple-600 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
                 >
                   Assign Teacher
                 </button>
                 <button
                   onClick={handleBulkDelete}
                   disabled={selectedLessons.size === 0 || bulkLoading}
-                  className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white rounded-md transition-colors"
+                  className="px-3 py-1.5 text-sm bg-red-600/80 hover:bg-red-600 disabled:opacity-30 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
                 >
                   Delete Selected
                 </button>
@@ -416,158 +415,83 @@ const ScheduleManager: React.FC = () => {
         )}
 
         {/* Filters */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-white/80 via-white/60 to-white/40 backdrop-blur-xl border border-white/20 shadow-2xl rounded-2xl p-6 mb-8">
-          {/* Glassmorphism background overlay */}
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 via-purple-50/20 to-pink-50/30"></div>
-          
-          <div className="relative z-10">
-            <h2 className="text-xl font-bold text-white/90 mb-6 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.207A1 1 0 013 6.5V4z" />
-                </svg>
-              </div>
-              Filters
-            </h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-              {/* Month Filter */}
-              <div className="group">
-                <label className="flex text-sm font-semibold text-white/70 mb-3 items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-gradient-to-r from-blue-500 to-purple-600"></div>
-                  Month
-                </label>
-                <div className="relative">
-                  <select
-                    className="w-full px-4 py-3.5 bg-surface/70 backdrop-blur-sm border border-white/30 rounded-xl shadow-card text-white/90 font-medium text-base focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-400 transition-all duration-300 hover:bg-surface/80 hover:shadow-card hover:scale-[1.02] cursor-pointer appearance-none"
-                    value={selectedMonth}
-                    onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                  >
-                    {[...Array(12)].map((_, i) => (
-                      <option key={i + 1} value={i + 1}>
-                        {new Date(selectedYear, i, 1).toLocaleDateString('en-US', { month: 'long' })}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
-                    <svg className="w-5 h-5 text-white/50 group-hover:text-blue-500 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
-              {/* Year Filter */}
-              <div className="group">
-                <label className="flex text-sm font-semibold text-white/70 mb-3 items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-gradient-to-r from-green-500 to-blue-600"></div>
-                  Year
-                </label>
-                <div className="relative">
-                  <select
-                    className="w-full px-4 py-3.5 bg-surface/70 backdrop-blur-sm border border-white/30 rounded-xl shadow-card text-white/90 font-medium text-base focus:outline-none focus:ring-4 focus:ring-green-500/20 focus:border-green-400 transition-all duration-300 hover:bg-surface/80 hover:shadow-card hover:scale-[1.02] cursor-pointer appearance-none"
-                    value={selectedYear}
-                    onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  >
-                    {[...Array(3)].map((_, i) => {
-                      const year = new Date().getFullYear() - 1 + i;
-                      return (
-                        <option key={year} value={year}>{year}</option>
-                      );
-                    })}
-                  </select>
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
-                    <svg className="w-5 h-5 text-white/50 group-hover:text-green-500 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
-              {/* Week Filter */}
-              <div className="group">
-                <label className="flex text-sm font-semibold text-white/70 mb-3 items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-600"></div>
-                  Week
-                </label>
-                <div className="relative">
-                  <select
-                    className="w-full px-4 py-3.5 bg-surface/70 backdrop-blur-sm border border-white/30 rounded-xl shadow-card text-white/90 font-medium text-base focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-400 transition-all duration-300 hover:bg-surface/80 hover:shadow-card hover:scale-[1.02] cursor-pointer appearance-none"
-                    value={selectedWeekNumber}
-                    onChange={(e) => setSelectedWeekNumber(Number(e.target.value))}
-                  >
-                    {availableWeeks.map(week => (
-                      <option key={week.week_number} value={week.week_number}>
-                        {week.display_name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
-                    <svg className="w-5 h-5 text-white/50 group-hover:text-purple-500 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
-              {/* Day Filter */}
-              <div className="group">
-                <label className="flex text-sm font-semibold text-white/70 mb-3 items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-gradient-to-r from-purple-500 to-pink-600"></div>
-                  Day
-                </label>
-                <div className="relative">
-                  <select
-                    className="w-full px-4 py-3.5 bg-surface/70 backdrop-blur-sm border border-white/30 rounded-xl shadow-card text-white/90 font-medium text-base focus:outline-none focus:ring-4 focus:ring-purple-500/20 focus:border-purple-400 transition-all duration-300 hover:bg-surface/80 hover:shadow-card hover:scale-[1.02] cursor-pointer appearance-none"
-                    value={selectedDay}
-                    onChange={(e) => setSelectedDay(e.target.value)}
-                  >
-                    <option value="">All Days</option>
-                    {DAYS.map(day => (
-                      <option key={day} value={day}>{day}</option>
-                    ))}
-                  </select>
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
-                    <svg className="w-5 h-5 text-white/50 group-hover:text-purple-500 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
-              {/* Teacher Filter */}
-              <div className="group">
-                <label className="flex text-sm font-semibold text-white/70 mb-3 items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-gradient-to-r from-orange-500 to-red-600"></div>
-                  Teacher
-                </label>
-                <div className="relative">
-                  <select
-                    className="w-full px-4 py-3.5 bg-surface/70 backdrop-blur-sm border border-white/30 rounded-xl shadow-card text-white/90 font-medium text-base focus:outline-none focus:ring-4 focus:ring-accent-500/20 focus:border-accent-500/40 transition-all duration-300 hover:bg-surface/80 hover:shadow-card hover:scale-[1.02] cursor-pointer appearance-none"
-                    value={selectedTeacher || ''}
-                    onChange={(e) => setSelectedTeacher(e.target.value ? Number(e.target.value) : null)}
-                  >
-                    <option value="">All Teachers</option>
-                    {teachers.map(teacher => (
-                      <option key={teacher.teacher_id} value={teacher.teacher_id}>
-                        {teacher.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
-                    <svg className="w-5 h-5 text-white/50 group-hover:text-accent-400 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
+        <div className="rounded-2xl border border-white/[0.06] bg-elevated p-5 mb-6">
+          <h2 className="text-base font-semibold text-white/90 mb-4">Filters</h2>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-white/40 mb-2">Month</label>
+              <select
+                className="select-control"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              >
+                {[...Array(12)].map((_, i) => (
+                  <option key={i + 1} value={i + 1}>
+                    {new Date(selectedYear, i, 1).toLocaleDateString('en-US', { month: 'long' })}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-white/40 mb-2">Year</label>
+              <select
+                className="select-control"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+              >
+                {[...Array(3)].map((_, i) => {
+                  const year = new Date().getFullYear() - 1 + i;
+                  return <option key={year} value={year}>{year}</option>;
+                })}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-white/40 mb-2">Week</label>
+              <select
+                className="select-control"
+                value={selectedWeekNumber}
+                onChange={(e) => setSelectedWeekNumber(Number(e.target.value))}
+              >
+                {availableWeeks.map(week => (
+                  <option key={week.week_number} value={week.week_number}>
+                    {week.display_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-white/40 mb-2">Day</label>
+              <select
+                className="select-control"
+                value={selectedDay}
+                onChange={(e) => setSelectedDay(e.target.value)}
+              >
+                <option value="">All Days</option>
+                {DAYS.map(day => (
+                  <option key={day} value={day}>{day}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-white/40 mb-2">Teacher</label>
+              <select
+                className="select-control"
+                value={selectedTeacher || ''}
+                onChange={(e) => setSelectedTeacher(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">All Teachers</option>
+                {teachers.map(teacher => (
+                  <option key={teacher.teacher_id} value={teacher.teacher_id}>
+                    {teacher.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
 
-
         {/* Current Lessons Display */}
-        <div className="bg-surface shadow rounded-lg overflow-hidden">
+        <div className="bg-surface shadow-glass rounded-2xl border border-white/[0.04] overflow-hidden">
           <div className="px-4 py-5 sm:p-6">
             <h2 className="text-lg font-medium text-white mb-4">
               Current Schedule {selectedYear && selectedMonth && selectedWeekNumber && 
@@ -653,19 +577,21 @@ const ScheduleManager: React.FC = () => {
                           </div>
                         </div>
                         {!bulkMode && (
-                          <div className="flex space-x-2">
+                          <div className="flex gap-1">
                             <button 
                               onClick={() => handleEditLesson(lesson)}
-                              className="text-accent-400 hover:text-orange-900 text-sm font-medium transition-colors"
+                              className="p-1.5 rounded-lg text-white/40 hover:text-accent-400 hover:bg-white/[0.04] transition-colors"
+                              title="Edit"
                             >
-                              Edit
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
                             </button>
                             {lesson.id && (
                               <button 
                                 onClick={() => handleDelete(lesson.id!)}
-                                className="text-red-400 hover:text-red-900 text-sm font-medium transition-colors"
+                                className="p-1.5 rounded-lg text-white/40 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                title="Delete"
                               >
-                                Delete
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
                               </button>
                             )}
                           </div>

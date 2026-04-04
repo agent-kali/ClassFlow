@@ -227,62 +227,31 @@ export const TeacherTimeline: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-base overflow-x-hidden">
-      {/* Teacher-only header */}
+      {/* Teacher-only header (branding + user info only — actions live in the nav bar below) */}
       {isTeacherUser && (
         <div className="sticky top-0 z-50 glass-nav">
           <div className="px-4 py-3">
             <div className="flex items-center justify-between">
               <h1 className="text-lg font-bold text-white font-display">ClassFlow</h1>
               <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <button
-                    className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white transition-colors"
-                    style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
-                    onClick={() => setDay(todayDay())}
-                    title="Jump to today"
-                  >
-                    Today
-                  </button>
-                  <button
-                    onClick={load}
-                    className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-white/60 hover:text-white/90 hover:bg-white/[0.06] transition-colors"
-                    disabled={selectedTeacherId === undefined || loading}
-                  >
-                    {loading ? 'Loading…' : 'Reload'}
-                  </button>
-                  <button
-                    className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-white/60 hover:text-white/90 hover:bg-white/[0.06] transition-colors"
-                    onClick={() => {
-                      const params = new URLSearchParams();
-                      if (selectedTeacherId) params.set('teacher', String(selectedTeacherId));
-                      if (week) params.set('week', String(week));
-                      navigate(`/week?${params.toString()}`);
-                    }}
-                  >
-                    Week grid
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-3 pl-3 border-l border-white/[0.06]">
-                  {auth.getUser() && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-white/60">{auth.getUser()?.username}</span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-accent-500/15 text-accent-300">
-                        {auth.getUser()?.role}
-                      </span>
-                    </div>
-                  )}
-                  <button
-                    onClick={handleLogout}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                    title="Sign out"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                  </button>
-                </div>
+                {auth.getUser() && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-white/60">{auth.getUser()?.username}</span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-accent-500/15 text-accent-300">
+                      {auth.getUser()?.role}
+                    </span>
+                  </div>
+                )}
+                <button
+                  onClick={handleLogout}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                  title="Sign out"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                </button>
               </div>
             </div>
           </div>
@@ -295,41 +264,54 @@ export const TeacherTimeline: React.FC = () => {
           {/* Title row */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-xl font-bold text-white font-display">Schedule</h2>
-            <div className="flex items-center gap-2">
-              <button
-                className="rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-1.5 text-sm font-medium text-white/60 hover:text-white/90 hover:bg-white/[0.06] hover:border-white/[0.12] transition-all"
-                onClick={() => setDay(todayDay())}
-              >
-                Today
-              </button>
-              <button
-                className="rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-1.5 text-sm font-medium text-white/60 hover:text-white/90 hover:bg-white/[0.06] hover:border-white/[0.12] transition-all"
-                onClick={load}
-                disabled={loading || selectedTeacherId === undefined}
-              >
-                {loading ? 'Loading…' : 'Reload'}
-              </button>
-              <button
-                className="rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-1.5 text-sm font-medium text-white/60 hover:text-white/90 hover:bg-white/[0.06] hover:border-white/[0.12] transition-all"
-                onClick={() => {
-                  const params = new URLSearchParams();
-                  if (selectedTeacherId) params.set('teacher', String(selectedTeacherId));
-                  if (week) params.set('week', String(week));
-                  navigate(`/week?${params.toString()}`);
-                }}
-              >
-                Week grid
-              </button>
-              <button
-                className="rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-1.5 text-sm font-medium text-white/60 hover:text-white/90 hover:bg-white/[0.06] hover:border-white/[0.12] transition-all"
-                onClick={() => {
-                  const params = new URLSearchParams();
-                  if (selectedTeacherId) params.set('teacher', String(selectedTeacherId));
-                  navigate(`/month?${params.toString()}`);
-                }}
-              >
-                Month view
-              </button>
+            <div className="flex items-center gap-3">
+              {/* Action controls */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white bg-accent-600 hover:bg-accent-700 transition-colors"
+                  onClick={() => setDay(todayDay())}
+                >
+                  Today
+                </button>
+                <button
+                  className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-white/60 hover:text-white/90 hover:bg-white/[0.06] transition-colors"
+                  onClick={load}
+                  disabled={loading || selectedTeacherId === undefined}
+                >
+                  {loading ? 'Loading…' : 'Reload'}
+                </button>
+              </div>
+
+              {/* View navigation segmented control */}
+              <div className="flex rounded-lg border border-white/[0.06] bg-base/60 p-0.5">
+                <button
+                  className="rounded-md px-3 py-1.5 text-sm font-semibold bg-white/[0.06] text-white/90 transition-colors"
+                  disabled
+                >
+                  Day
+                </button>
+                <button
+                  className="rounded-md px-3 py-1.5 text-sm font-medium text-white/50 hover:text-white/80 hover:bg-white/[0.04] transition-colors"
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    if (selectedTeacherId) params.set('teacher', String(selectedTeacherId));
+                    if (week) params.set('week', String(week));
+                    navigate(`/week?${params.toString()}`);
+                  }}
+                >
+                  Week
+                </button>
+                <button
+                  className="rounded-md px-3 py-1.5 text-sm font-medium text-white/50 hover:text-white/80 hover:bg-white/[0.04] transition-colors"
+                  onClick={() => {
+                    const params = new URLSearchParams();
+                    if (selectedTeacherId) params.set('teacher', String(selectedTeacherId));
+                    navigate(`/month?${params.toString()}`);
+                  }}
+                >
+                  Month
+                </button>
+              </div>
             </div>
           </div>
 

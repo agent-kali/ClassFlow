@@ -554,7 +554,7 @@ export const WeekView: React.FC = () => {
               </button>
               <div className="text-center">
                 <div className="text-sm font-semibold text-white">
-                  {format(weekStart, 'MMM d')} \u2013 {format(weekEnd, 'MMM d')}
+                  {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d')}
                 </div>
                 <div className="text-[11px] text-white/40 font-medium">
                   {weekInfo?.weekNumber ? `W${weekInfo.weekNumber}` : format(weekStart, 'yyyy')}
