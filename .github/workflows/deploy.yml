@@ -41,14 +41,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run remote deploy script
+      - name: Configure SSH key
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          DEPLOY_BRANCH: ${{ secrets.DEPLOY_BRANCH }}
-          PRODUCTION_DOMAIN: ${{ secrets.PRODUCTION_DOMAIN }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           if [ -z "${DEPLOY_HOST}" ] || [ -z "${DEPLOY_USER}" ] || [ -z "${DEPLOY_PATH}" ] || [ -z "${SSH_PRIVATE_KEY}" ]; then
@@ -57,15 +55,36 @@ jobs:
           fi
 
           mkdir -p ~/.ssh
-          echo "${SSH_PRIVATE_KEY}" > ~/.ssh/id_ed25519
+          chmod 700 ~/.ssh
+          # Strip Windows CRLF (breaks OpenSSH); match GitLab CI pattern
+          printf '%s\n' "${SSH_PRIVATE_KEY}" | tr -d '\r' > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
           PORT="${DEPLOY_PORT:-22}"
+          ssh-keyscan -p "${PORT}" -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts 2>/dev/null
+
+          SSH_BASE=(ssh -p "${PORT}" -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519)
+
+          echo "Testing SSH to ${DEPLOY_USER}@${DEPLOY_HOST} (port ${PORT})..."
+          if ! "${SSH_BASE[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" "echo 'SSH connection OK'"; then
+            echo "::error::SSH failed (exit 255 usually means auth or wrong host/port). Check: DEPLOY_USER, public key in ~/.ssh/authorized_keys on the server for that user, and Droplet firewall allows SSH on this port."
+            exit 255
+          fi
+
+      - name: Run remote deploy script
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_BRANCH: ${{ secrets.DEPLOY_BRANCH }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          PORT="${DEPLOY_PORT:-22}"
           BRANCH="${DEPLOY_BRANCH:-main}"
+          SSH_BASE=(ssh -p "${PORT}" -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519)
 
-          ssh-keyscan -p "${PORT}" -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
-
-          ssh -p "${PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+          "${SSH_BASE[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
             "set -euo pipefail; cd \"${DEPLOY_PATH}\"; git fetch --prune; git checkout \"${BRANCH}\"; git pull origin \"${BRANCH}\"; ./scripts/deploy_remote.sh"
 
       - name: Deployment summary
