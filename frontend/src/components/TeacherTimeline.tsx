@@ -48,13 +48,24 @@ export const TeacherTimeline: React.FC = () => {
       .listTeachers()
       .then((list) => {
         setTeachers(list);
-        if (selectedTeacherId === undefined) {
-          const dan = list.find((t) => t.name === 'Mr Daniel');
-          if (dan) setSelectedTeacherId(dan.teacher_id);
+        const selectedStillExists = selectedTeacherId !== undefined &&
+          list.some((teacher) => teacher.teacher_id === selectedTeacherId);
+
+        if (!selectedStillExists) {
+          const preferredTeacher =
+            list.find((teacher) => teacher.name === 'Mr Daniel') ||
+            list.find((teacher) => teacher.name.startsWith('[Demo]')) ||
+            list[0];
+
+          if (preferredTeacher) {
+            setSelectedTeacherId(preferredTeacher.teacher_id);
+          } else {
+            setSelectedTeacherId(undefined);
+          }
         }
       })
       .catch((e) => setError(String(e)));
-  }, []);
+  }, [selectedTeacherId]);
 
   React.useEffect(() => {
     api.getAnchor()

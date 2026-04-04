@@ -280,26 +280,32 @@ docker compose down -v
 
 ## CI/CD Pipeline
 
-This repository includes a GitLab CI pipeline that:
+This repository includes CI/CD for VPS deployments:
 
-- Installs backend dependencies and runs tests on the `main` branch.
-- Deploys to the production VPS using `scripts/deploy_remote.sh`.
+- GitLab CI via `.gitlab-ci.yml`.
+- GitHub Actions via `.github/workflows/deploy.yml`.
 
-### Required GitLab Variables
+Both pipelines run backend checks and then deploy to the production VPS using `scripts/deploy_remote.sh`.
 
-Set the following variables in your project (Settings → CI/CD → Variables):
+### Required Variables (GitLab CI / GitHub Actions)
+
+Set the following values as GitLab CI variables or GitHub Actions repository secrets:
 
 - `DEPLOY_HOST`: Public IP or domain of the VPS.
 - `DEPLOY_USER`: SSH user (e.g., `root`).
 - `DEPLOY_PATH`: Absolute path to the project on the VPS (e.g., `/opt/e-home`).
 - `SSH_PRIVATE_KEY`: Private key with access to the VPS (Base64 encoded or plain text).
+- `DEPLOY_PORT` (optional): SSH port, defaults to `22`.
+- `DEPLOY_BRANCH` (optional): Branch to deploy, defaults to `main`.
 - `PRODUCTION_DOMAIN` (optional): Domain for environment URL.
 
 ### SSH Key Setup
 
 1. Generate a deploy key dedicated to CI: `ssh-keygen -t ed25519 -f ~/.ssh/ci-deploy-key -C "gitlab-ci"`.
 2. Add the public key to `~/.ssh/authorized_keys` on the VPS.
-3. Store the private key in GitLab as `SSH_PRIVATE_KEY` (ensure `Protect variable` and `Mask variable` are enabled).
+3. Store the private key:
+   - In GitLab as `SSH_PRIVATE_KEY` (protect/mask recommended), or
+   - In GitHub as a repository secret named `SSH_PRIVATE_KEY`.
 
 ### Remote Deploy Script
 

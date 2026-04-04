@@ -1,4 +1,4 @@
-"""Auth routes: POST /auth/login, user management."""
+"""Auth routes: POST /auth/login, demo login, user management."""
 
 import logging
 from typing import List
@@ -14,6 +14,9 @@ from backend.app.core.security import (
 )
 from backend.app.models.db_models import Teacher, User, UserRole
 from backend.app.models.schemas import Token, UserCreate, UserLogin, UserOut
+from backend.app.services.demo_service import (
+    ensure_demo_data, get_or_create_demo_user, reset_demo_data,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth")
@@ -28,6 +31,35 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
         maybe_upgrade_password_hash(user, user_credentials.password, db)
     access_token = create_access_token({"sub": user.username})
     return Token(access_token=access_token, token_type="bearer", user=UserOut.model_validate(user))
+
+
+@router.post("/demo-login", response_model=Token, summary="Log in as demo manager")
+def demo_login(db: Session = Depends(get_db)):
+    """Provision (or fetch) a shared demo manager account, ensure demo data
+    exists, and return a valid token.  No credentials required."""
+    try:
+        user = get_or_create_demo_user(db)
+        ensure_demo_data(db)
+        access_token = create_access_token({"sub": user.username})
+        return Token(
+            access_token=access_token,
+            token_type="bearer",
+            user=UserOut.model_validate(user),
+        )
+    except Exception as exc:
+        logger.exception("Demo login failed")
+        raise HTTPException(500, f"Demo login failed: {exc}")
+
+
+@router.post("/demo-reset", summary="Reset demo dataset")
+def demo_reset(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Delete all demo records and regenerate a fresh dataset.
+    Requires admin privileges."""
+    counts = reset_demo_data(db)
+    return {"message": "Demo data reset successfully", **counts}
 
 
 @router.get("/me", response_model=UserOut, summary="Current user info")

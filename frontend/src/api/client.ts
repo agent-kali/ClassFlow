@@ -147,6 +147,15 @@ export const api = {
     return token;
   },
 
+  demoLogin: async (): Promise<Token> => {
+    const token = await fetchJson<Token>('/auth/demo-login', {
+      method: 'POST',
+    });
+    AuthStorage.setToken(token.access_token);
+    AuthStorage.setUser(token.user);
+    return token;
+  },
+
   logout: (): void => {
     AuthStorage.removeToken();
   },

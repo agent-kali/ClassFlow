@@ -412,6 +412,351 @@ def create_access_token(data: dict) -> str:
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
+
+DEMO_USERNAME = "demo_manager"
+DEMO_EMAIL = "demo@classflow.local"
+DEMO_TEACHER_PREFIX = "[Demo] "
+DEMO_CLASS_PREFIX = "DEMO-"
+
+DEMO_TEACHERS = [
+    {"name": "Sarah Johnson", "specialization": "English", "email": "sarah@demo.local"},
+    {"name": "Michael Chen", "specialization": "Mathematics", "email": "michael@demo.local"},
+    {"name": "Emma Wilson", "specialization": "Science", "email": "emma@demo.local"},
+    {"name": "David Park", "specialization": "History", "email": "david@demo.local"},
+    {"name": "Lisa Thompson", "specialization": "Art", "email": "lisa@demo.local"},
+]
+
+DEMO_CLASSES = [
+    {"code": "E1-A1", "campus": "E1", "level": "Beginner"},
+    {"code": "E1-B2", "campus": "E1", "level": "Intermediate"},
+    {"code": "E2-C1", "campus": "E2", "level": "Advanced"},
+    {"code": "E2-D3", "campus": "E2", "level": "Intermediate"},
+]
+
+DEMO_LESSONS = [
+    {"teacher_idx": 0, "class_idx": 0, "day": "Mon", "start": "17:00", "end": "17:30", "room": "101"},
+    {"teacher_idx": 0, "class_idx": 0, "day": "Mon", "start": "17:30", "end": "18:00", "room": "101"},
+    {"teacher_idx": 1, "class_idx": 1, "day": "Mon", "start": "17:00", "end": "17:30", "room": "102"},
+    {"teacher_idx": 1, "class_idx": 1, "day": "Mon", "start": "17:30", "end": "18:00", "room": "102"},
+    {"teacher_idx": 2, "class_idx": 2, "day": "Mon", "start": "18:00", "end": "18:30", "room": "201"},
+    {"teacher_idx": 2, "class_idx": 2, "day": "Mon", "start": "18:30", "end": "19:00", "room": "201"},
+    {"teacher_idx": 3, "class_idx": 3, "day": "Mon", "start": "19:00", "end": "19:30", "room": "202"},
+    {"teacher_idx": 3, "class_idx": 3, "day": "Mon", "start": "19:30", "end": "20:00", "room": "202"},
+    {"teacher_idx": 0, "class_idx": 1, "day": "Wed", "start": "17:00", "end": "17:30", "room": "101"},
+    {"teacher_idx": 0, "class_idx": 1, "day": "Wed", "start": "17:30", "end": "18:00", "room": "101"},
+    {"teacher_idx": 1, "class_idx": 2, "day": "Wed", "start": "18:00", "end": "18:30", "room": "103"},
+    {"teacher_idx": 1, "class_idx": 2, "day": "Wed", "start": "18:30", "end": "19:00", "room": "103"},
+    {"teacher_idx": 4, "class_idx": 0, "day": "Wed", "start": "17:00", "end": "17:30", "room": "201"},
+    {"teacher_idx": 4, "class_idx": 0, "day": "Wed", "start": "17:30", "end": "18:00", "room": "201"},
+    {"teacher_idx": 3, "class_idx": 3, "day": "Wed", "start": "19:00", "end": "19:30", "room": "202"},
+    {"teacher_idx": 3, "class_idx": 3, "day": "Wed", "start": "19:30", "end": "20:00", "room": "202"},
+]
+
+
+def get_or_create_demo_user(db: Session) -> User:
+    user = db.query(User).filter(User.username == DEMO_USERNAME).first()
+    if user:
+        return user
+
+    import secrets
+
+    user = User(
+        username=DEMO_USERNAME,
+        email=DEMO_EMAIL,
+        hashed_password=hash_password(secrets.token_urlsafe(32)),
+        role=UserRole.MANAGER,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def _demo_week_context() -> dict:
+    now = datetime.now()
+    week_number = (now.day - 1) // 7 + 1
+    return {
+        "week": week_number,
+        "month": now.month,
+        "year": now.year,
+        "week_number": week_number,
+    }
+
+
+def next_teacher_id(db: Session) -> int:
+    current = db.query(Teacher.teacher_id).filter(Teacher.teacher_id.isnot(None)).order_by(Teacher.teacher_id.desc()).first()
+    return (current[0] if current and current[0] is not None else -1) + 1
+
+
+def next_class_id(db: Session) -> int:
+    current = db.query(ClassModel.class_id).filter(ClassModel.class_id.isnot(None)).order_by(ClassModel.class_id.desc()).first()
+    return (current[0] if current and current[0] is not None else -1) + 1
+
+
+def ensure_demo_data(db: Session) -> None:
+    demo_teachers = [
+        teacher
+        for teacher in db.query(Teacher).filter(Teacher.name.like(f"{DEMO_TEACHER_PREFIX}%")).all()
+        if teacher is not None
+    ]
+    demo_classes = [
+        class_record
+        for class_record in db.query(ClassModel).filter(ClassModel.code_new.like(f"{DEMO_CLASS_PREFIX}%")).all()
+        if class_record is not None
+    ]
+
+    if demo_teachers or demo_classes:
+        demo_day_updates = {
+            "Monday": "Mon",
+            "Tuesday": "Tue",
+            "Wednesday": "Wed",
+            "Thursday": "Thu",
+            "Friday": "Fri",
+            "Saturday": "Sat",
+            "Sunday": "Sun",
+        }
+        demo_teacher_ids = [
+            teacher.teacher_id
+            for teacher in demo_teachers
+            if teacher.teacher_id is not None
+        ]
+        demo_class_ids = [
+            class_record.class_id
+            for class_record in demo_classes
+            if class_record.class_id is not None
+        ]
+        invalid_demo_records = (
+            any(teacher.teacher_id is None for teacher in demo_teachers) or
+            any(class_record.class_id is None for class_record in demo_classes)
+        )
+
+        lesson_conditions = []
+        if demo_teacher_ids:
+            lesson_conditions.append(Lesson.teacher_id.in_(demo_teacher_ids))
+        if demo_class_ids:
+            lesson_conditions.append(Lesson.class_id.in_(demo_class_ids))
+        demo_lessons = (
+            db.query(Lesson).filter(or_(*lesson_conditions)).all()
+            if lesson_conditions else []
+        )
+
+        if invalid_demo_records or (demo_teachers and demo_classes and not demo_lessons):
+            if lesson_conditions:
+                db.query(Lesson).filter(or_(*lesson_conditions)).delete(synchronize_session="fetch")
+            db.query(Teacher).filter(Teacher.name.like(f"{DEMO_TEACHER_PREFIX}%")).delete(synchronize_session="fetch")
+            db.query(ClassModel).filter(ClassModel.code_new.like(f"{DEMO_CLASS_PREFIX}%")).delete(synchronize_session="fetch")
+            db.commit()
+        else:
+            changed = False
+            for lesson in demo_lessons:
+                normalized_day = demo_day_updates.get(lesson.day)
+                if normalized_day and normalized_day != lesson.day:
+                    lesson.day = normalized_day
+                    changed = True
+            if changed:
+                db.commit()
+            return
+
+    ctx = _demo_week_context()
+    teacher_ids = []
+    teacher_id_seed = next_teacher_id(db)
+    for teacher_data in DEMO_TEACHERS:
+        teacher = Teacher(
+            teacher_id=teacher_id_seed,
+            name=f"{DEMO_TEACHER_PREFIX}{teacher_data['name']}",
+            email=teacher_data["email"],
+            specialization=teacher_data["specialization"],
+            is_active=True,
+            is_foreign=False,
+        )
+        db.add(teacher)
+        db.flush()
+        teacher_ids.append(teacher.teacher_id)
+        teacher_id_seed += 1
+
+    class_ids = []
+    class_id_seed = next_class_id(db)
+    for class_data in DEMO_CLASSES:
+        demo_code = f"{DEMO_CLASS_PREFIX}{class_data['code']}"
+        class_record = ClassModel(
+            class_id=class_id_seed,
+            code_new=demo_code,
+            code_old=demo_code,
+            name=demo_code,
+            campus_name=class_data["campus"],
+            level=class_data["level"],
+            is_active=True,
+        )
+        db.add(class_record)
+        db.flush()
+        class_ids.append(class_record.class_id)
+        class_id_seed += 1
+
+    for lesson_data in DEMO_LESSONS:
+        db.add(Lesson(
+            teacher_id=teacher_ids[lesson_data["teacher_idx"]],
+            class_id=class_ids[lesson_data["class_idx"]],
+            day=lesson_data["day"],
+            start_time=lesson_data["start"],
+            end_time=lesson_data["end"],
+            room=lesson_data["room"],
+            week=ctx["week"],
+            month=ctx["month"],
+            year=ctx["year"],
+            week_number=ctx["week_number"],
+            month_week_id=str(ctx["week_number"]),
+        ))
+
+    db.commit()
+
+
+def reset_demo_data(db: Session) -> dict:
+    demo_teacher_ids = [
+        teacher.teacher_id
+        for teacher in db.query(Teacher).filter(Teacher.name.like(f"{DEMO_TEACHER_PREFIX}%")).all()
+    ]
+    demo_class_ids = [
+        class_record.class_id
+        for class_record in db.query(ClassModel).filter(ClassModel.code_new.like(f"{DEMO_CLASS_PREFIX}%")).all()
+    ]
+
+    lessons_deleted = 0
+    if demo_teacher_ids or demo_class_ids:
+        filters = []
+        if demo_teacher_ids:
+            filters.append(Lesson.teacher_id.in_(demo_teacher_ids))
+        if demo_class_ids:
+            filters.append(Lesson.class_id.in_(demo_class_ids))
+        lessons_deleted = db.query(Lesson).filter(or_(*filters)).delete(synchronize_session="fetch")
+
+    teachers_deleted = db.query(Teacher).filter(
+        Teacher.name.like(f"{DEMO_TEACHER_PREFIX}%")
+    ).delete(synchronize_session="fetch")
+    classes_deleted = db.query(ClassModel).filter(
+        ClassModel.code_new.like(f"{DEMO_CLASS_PREFIX}%")
+    ).delete(synchronize_session="fetch")
+    db.query(User).filter(User.username == DEMO_USERNAME).delete(synchronize_session="fetch")
+    db.commit()
+
+    get_or_create_demo_user(db)
+    ensure_demo_data(db)
+    return {
+        "teachers_deleted": teachers_deleted,
+        "classes_deleted": classes_deleted,
+        "lessons_deleted": lessons_deleted,
+    }
+
+
+def is_demo_user(user: Optional[User]) -> bool:
+    return bool(user and user.username == DEMO_USERNAME)
+
+
+def is_demo_teacher_name(name: Optional[str]) -> bool:
+    return bool(name and name.startswith(DEMO_TEACHER_PREFIX))
+
+
+def is_demo_class_code(code: Optional[str]) -> bool:
+    return bool(code and code.startswith(DEMO_CLASS_PREFIX))
+
+
+def demo_teacher_name(name: str, current_user: Optional[User]) -> str:
+    if is_demo_user(current_user) and not is_demo_teacher_name(name):
+        return f"{DEMO_TEACHER_PREFIX}{name}"
+    return name
+
+
+def demo_class_code(code: Optional[str], current_user: Optional[User]) -> Optional[str]:
+    if code and is_demo_user(current_user) and not is_demo_class_code(code):
+        return f"{DEMO_CLASS_PREFIX}{code}"
+    return code
+
+
+def day_aliases(day: Optional[str]) -> List[str]:
+    mapping = {
+        "Mon": ["Mon", "Monday"],
+        "Monday": ["Mon", "Monday"],
+        "Tue": ["Tue", "Tuesday"],
+        "Tuesday": ["Tue", "Tuesday"],
+        "Wed": ["Wed", "Wednesday"],
+        "Wednesday": ["Wed", "Wednesday"],
+        "Thu": ["Thu", "Thursday"],
+        "Thursday": ["Thu", "Thursday"],
+        "Fri": ["Fri", "Friday"],
+        "Friday": ["Fri", "Friday"],
+        "Sat": ["Sat", "Saturday"],
+        "Saturday": ["Sat", "Saturday"],
+        "Sun": ["Sun", "Sunday"],
+        "Sunday": ["Sun", "Sunday"],
+    }
+    return mapping.get(day, [day] if day else [])
+
+
+def apply_demo_scope_to_teacher_query(query, current_user: Optional[User], teacher_model=Teacher):
+    if is_demo_user(current_user):
+        query = query.filter(
+            teacher_model.name.like(f"{DEMO_TEACHER_PREFIX}%"),
+            teacher_model.teacher_id.isnot(None),
+        )
+    return query
+
+
+def apply_demo_scope_to_class_query(query, current_user: Optional[User], class_model=ClassModel):
+    if is_demo_user(current_user):
+        query = query.filter(
+            class_model.code_new.like(f"{DEMO_CLASS_PREFIX}%"),
+            class_model.class_id.isnot(None),
+        )
+    return query
+
+
+def apply_demo_scope_to_schedule_query(query, current_user: Optional[User], class_model=ClassModel, teacher_model=Teacher):
+    if is_demo_user(current_user):
+        query = query.filter(
+            class_model.code_new.like(f"{DEMO_CLASS_PREFIX}%"),
+            class_model.class_id.isnot(None),
+            teacher_model.name.like(f"{DEMO_TEACHER_PREFIX}%"),
+            teacher_model.teacher_id.isnot(None),
+        )
+    return query
+
+
+def ensure_demo_teacher_access(teacher: Optional[Teacher], current_user: Optional[User]) -> None:
+    if teacher is None:
+        return
+    if is_demo_user(current_user) and not is_demo_teacher_name(teacher.name):
+        raise HTTPException(404, "Teacher not found")
+
+
+def ensure_demo_class_access(class_record: Optional[ClassModel], current_user: Optional[User]) -> None:
+    if class_record is None:
+        return
+    if is_demo_user(current_user) and not is_demo_class_code(class_record.code_new):
+        raise HTTPException(404, "Class not found")
+
+
+def ensure_demo_lesson_access(
+    db: Session,
+    *,
+    current_user: Optional[User],
+    lesson: Optional[Lesson] = None,
+    teacher_id: Optional[int] = None,
+    class_id: Optional[int] = None,
+) -> None:
+    if not is_demo_user(current_user):
+        return
+
+    if lesson is not None:
+        teacher_id = lesson.teacher_id
+        class_id = lesson.class_id
+
+    if teacher_id is not None:
+        teacher = db.query(Teacher).filter(Teacher.teacher_id == teacher_id).first()
+        ensure_demo_teacher_access(teacher, current_user)
+    if class_id is not None:
+        class_record = db.query(ClassModel).filter(ClassModel.class_id == class_id).first()
+        ensure_demo_class_access(class_record, current_user)
+
 # DB session dependency
 def get_db():
     db = SessionLocal()
@@ -1028,6 +1373,30 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
         user=UserOut.from_orm(user)
     )
 
+
+@app.post("/auth/demo-login", response_model=Token)
+def demo_login(db: Session = Depends(get_db)):
+    """Authenticate into the shared demo workspace and seed data if needed."""
+    try:
+        user = get_or_create_demo_user(db)
+        ensure_demo_data(db)
+        access_token = create_access_token({"sub": user.username})
+        return Token(
+            access_token=access_token,
+            token_type="bearer",
+            user=UserOut.from_orm(user),
+        )
+    except Exception as exc:
+        logger.exception("Demo login failed")
+        raise HTTPException(500, f"Demo login failed: {exc}")
+
+
+@app.post("/auth/demo-reset")
+def demo_reset(db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    """Reset shared demo records and regenerate the demo workspace."""
+    counts = reset_demo_data(db)
+    return {"message": "Demo data reset successfully", **counts}
+
 @app.get("/auth/me", response_model=UserOut)
 def get_current_user_info(current_user: User = Depends(get_current_user)):
     """Get current user information"""
@@ -1087,6 +1456,12 @@ def check_conflicts(
     current_user: User = Depends(require_manager_or_admin)
 ):
     """Check for conflicts before creating a lesson"""
+    ensure_demo_lesson_access(
+        db,
+        current_user=current_user,
+        teacher_id=lesson_data.teacher_id,
+        class_id=lesson_data.class_id,
+    )
     conflicts = check_lesson_conflicts(db, lesson_data)
     return ConflictCheck(conflicts=conflicts, can_create=len(conflicts) == 0)
 
@@ -1106,6 +1481,12 @@ def create_lesson(
     current_user: User = Depends(require_manager_or_admin)
 ):
     """Create a new lesson"""
+    ensure_demo_lesson_access(
+        db,
+        current_user=current_user,
+        teacher_id=lesson_data.teacher_id,
+        class_id=lesson_data.class_id,
+    )
     # Validate time restrictions
     validate_lesson_times(lesson_data.start_time, lesson_data.end_time)
     
@@ -1233,6 +1614,7 @@ def get_lesson(
         raise HTTPException(404, "Lesson not found")
     
     lesson, cls, teacher = lesson_with_details
+    ensure_demo_lesson_access(db, current_user=current_user, lesson=lesson)
     
     # Generate month_week_display if month-based week fields are available
     month_week_display = None
@@ -1269,6 +1651,7 @@ def update_lesson(
     existing_lesson = db.query(Lesson).filter(Lesson.id == lesson_id).first()
     if not existing_lesson:
         raise HTTPException(404, "Lesson not found")
+    ensure_demo_lesson_access(db, current_user=current_user, lesson=existing_lesson)
     
     # Determine final start_time and end_time values
     final_start_time = lesson_update.start_time or existing_lesson.start_time
@@ -1290,6 +1673,12 @@ def update_lesson(
         month=lesson_update.month or existing_lesson.month,
         year=lesson_update.year or existing_lesson.year,
         week_number=lesson_update.week_number or existing_lesson.week_number
+    )
+    ensure_demo_lesson_access(
+        db,
+        current_user=current_user,
+        teacher_id=lesson_data.teacher_id,
+        class_id=lesson_data.class_id,
     )
     
     # Check for conflicts (excluding the current lesson)
@@ -1356,6 +1745,7 @@ def delete_lesson(
     lesson = db.query(Lesson).filter(Lesson.id == lesson_id).first()
     if not lesson:
         raise HTTPException(404, "Lesson not found")
+    ensure_demo_lesson_access(db, current_user=current_user, lesson=lesson)
     
     db.delete(lesson)
     db.commit()
@@ -1415,6 +1805,7 @@ def list_lessons(
         .join(ClassModel, Lesson.class_id == ClassModel.class_id)
         .join(Teacher, Lesson.teacher_id == Teacher.teacher_id)
     )
+    query = apply_demo_scope_to_schedule_query(query, current_user)
     
     # Prioritize month-based week filtering over legacy week filtering
     if month is not None and year is not None and week_number is not None:
@@ -1427,7 +1818,7 @@ def list_lessons(
         query = query.filter(Lesson.week == week)
     
     if day is not None:
-        query = query.filter(Lesson.day == day)
+        query = query.filter(Lesson.day.in_(day_aliases(day)))
     if teacher_id is not None:
         query = query.filter(Lesson.teacher_id == teacher_id)
     if class_id is not None:
@@ -1471,6 +1862,7 @@ def list_lessons(
 
 def _get_schedule_rows(
     db: Session,
+    current_user: Optional[User] = None,
     teacher_id: Optional[int] = None,
     class_id: Optional[int] = None,
     week: Optional[int] = None,
@@ -1490,6 +1882,7 @@ def _get_schedule_rows(
         .join(Teacher, Lesson.teacher_id == Teacher.teacher_id)
         .outerjoin(CoTeacher, Lesson.co_teacher_id == CoTeacher.teacher_id)
     )
+    query = apply_demo_scope_to_schedule_query(query, current_user)
     
     # Filter by teacher (both as primary teacher AND as co-teacher)
     if teacher_id is not None:
@@ -1520,7 +1913,7 @@ def _get_schedule_rows(
     
     # Filter by day
     if day is not None:
-        query = query.filter(Lesson.day == day)
+        query = query.filter(Lesson.day.in_(day_aliases(day)))
     
     return query.order_by(Lesson.week, Lesson.day, Lesson.start_time).all()
 
@@ -1535,15 +1928,17 @@ def get_teacher_schedule(
     month: Optional[int] = None,
     year: Optional[int] = None,
     week_number: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_any_role),
 ) -> List[LessonOut]:
     """Get schedule for a specific teacher"""
     # Validate teacher exists
     teacher_exists = db.query(Teacher).filter(Teacher.teacher_id == teacher_id).first()
+    ensure_demo_teacher_access(teacher_exists, current_user)
     if not teacher_exists:
         raise HTTPException(404, f"Teacher with id {teacher_id} not found")
     
-    rows = _get_schedule_rows(db, teacher_id=teacher_id, week=week, day=day, campus=campus, month=month, year=year, week_number=week_number)
+    rows = _get_schedule_rows(db, current_user=current_user, teacher_id=teacher_id, week=week, day=day, campus=campus, month=month, year=year, week_number=week_number)
     
     # If no rows, return an empty list (better UX for frontend)
     if not rows:
@@ -1572,8 +1967,8 @@ def get_teacher_schedule(
             .filter(Lesson.day.in_(days))
             .filter(Lesson.start_time.in_(starts))
             .filter(Lesson.end_time.in_(ends))
-            .all()
         )
+        others = apply_demo_scope_to_schedule_query(others, current_user).all()
         co_map: Dict[Tuple[int, int, str, str, str], List[str]] = {}
         # Only attach co-teachers that are complementary in foreign/local status.
         # If the selected teacher is foreign, prefer Vietnamese (non-foreign) co-teachers, but if none exist,
@@ -1638,15 +2033,17 @@ def get_class_schedule(
     day: Optional[str] = None,
     campus: Optional[str] = None,
     grouped: bool = False,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_any_role),
 ) -> List[LessonOut]:
     """Get schedule for a specific class"""
     # Validate class exists
     class_exists = db.query(ClassModel).filter(ClassModel.class_id == class_id).first()
+    ensure_demo_class_access(class_exists, current_user)
     if not class_exists:
         raise HTTPException(404, f"Class with id {class_id} not found")
     
-    rows = _get_schedule_rows(db, class_id=class_id, week=week, day=day, campus=campus)
+    rows = _get_schedule_rows(db, current_user=current_user, class_id=class_id, week=week, day=day, campus=campus)
     
     # If no rows, return an empty list (better UX for frontend)
     if not rows:
@@ -1668,7 +2065,7 @@ def list_teachers(
 ):
     """List all teachers with optional filtering"""
     try:
-        query = db.query(Teacher)
+        query = apply_demo_scope_to_teacher_query(db.query(Teacher), current_user)
         
         if search:
             query = query.filter(Teacher.name.ilike(f"%{search}%"))
@@ -1679,7 +2076,11 @@ def list_teachers(
     except Exception as e:
         logger.error(f"Error querying teachers: {e}")
         # Fallback: return basic teacher info without optional fields
-        query = db.query(Teacher.teacher_id, Teacher.name, Teacher.is_foreign, Teacher.is_active)
+        query = apply_demo_scope_to_teacher_query(
+            db.query(Teacher.teacher_id, Teacher.name, Teacher.is_foreign, Teacher.is_active),
+            current_user,
+            Teacher,
+        )
         
         if search:
             query = query.filter(Teacher.name.ilike(f"%{search}%"))
@@ -1725,13 +2126,15 @@ def create_teacher(
     current_user: User = Depends(require_manager_or_admin)
 ):
     """Create a new teacher"""
+    teacher_name = demo_teacher_name(teacher_data.name, current_user)
     # Check if teacher with same name already exists
-    existing = db.query(Teacher).filter(Teacher.name == teacher_data.name).first()
+    existing = db.query(Teacher).filter(Teacher.name == teacher_name).first()
     if existing:
         raise HTTPException(status_code=400, detail="Teacher with this name already exists")
     
     teacher = Teacher(
-        name=teacher_data.name,
+        teacher_id=next_teacher_id(db),
+        name=teacher_name,
         email=teacher_data.email,
         phone=teacher_data.phone,
         specialization=teacher_data.specialization,
@@ -1761,6 +2164,7 @@ def get_teacher(
 ):
     """Get a specific teacher"""
     teacher = db.query(Teacher).filter(Teacher.teacher_id == teacher_id).first()
+    ensure_demo_teacher_access(teacher, current_user)
     if not teacher:
         raise HTTPException(status_code=404, detail="Teacher not found")
     
@@ -1785,17 +2189,21 @@ def update_teacher(
 ):
     """Update a teacher"""
     teacher = db.query(Teacher).filter(Teacher.teacher_id == teacher_id).first()
+    ensure_demo_teacher_access(teacher, current_user)
     if not teacher:
         raise HTTPException(status_code=404, detail="Teacher not found")
     
     # Check if new name conflicts with existing teacher
-    if teacher_data.name and teacher_data.name != teacher.name:
-        existing = db.query(Teacher).filter(Teacher.name == teacher_data.name).first()
+    updated_name = demo_teacher_name(teacher_data.name, current_user) if teacher_data.name else None
+    if updated_name and updated_name != teacher.name:
+        existing = db.query(Teacher).filter(Teacher.name == updated_name).first()
         if existing:
             raise HTTPException(status_code=400, detail="Teacher with this name already exists")
     
     # Update fields
     for field, value in teacher_data.dict(exclude_unset=True).items():
+        if field == "name":
+            value = demo_teacher_name(value, current_user)
         setattr(teacher, field, value)
     
     db.commit()
@@ -1822,6 +2230,7 @@ def delete_teacher(
 ):
     """Delete a teacher (with safety checks)"""
     teacher = db.query(Teacher).filter(Teacher.teacher_id == teacher_id).first()
+    ensure_demo_teacher_access(teacher, current_user)
     if not teacher:
         raise HTTPException(status_code=404, detail="Teacher not found")
     
@@ -1853,7 +2262,7 @@ def list_classes(
     current_user: User = Depends(require_any_role)
 ):
     """List all classes with optional filtering"""
-    query = db.query(ClassModel)
+    query = apply_demo_scope_to_class_query(db.query(ClassModel), current_user)
     
     if search:
         query = query.filter(
@@ -1905,25 +2314,28 @@ def create_class(
     current_user: User = Depends(require_manager_or_admin)
 ):
     """Create a new class"""
+    code_new = demo_class_code(class_data.code_new, current_user)
+    code_old = demo_class_code(class_data.code_old, current_user)
     # Check for duplicate codes
-    if class_data.code_new:
-        existing = db.query(ClassModel).filter(ClassModel.code_new == class_data.code_new).first()
+    if code_new:
+        existing = db.query(ClassModel).filter(ClassModel.code_new == code_new).first()
         if existing:
             raise HTTPException(status_code=400, detail="Class with this new code already exists")
     
-    if class_data.code_old:
-        existing = db.query(ClassModel).filter(ClassModel.code_old == class_data.code_old).first()
+    if code_old:
+        existing = db.query(ClassModel).filter(ClassModel.code_old == code_old).first()
         if existing:
             raise HTTPException(status_code=400, detail="Class with this old code already exists")
     
     cls = ClassModel(
-        code_new=class_data.code_new,
-        code_old=class_data.code_old,
+        class_id=next_class_id(db),
+        code_new=code_new,
+        code_old=code_old,
         campus_name=class_data.campus_name,
         level=class_data.level,
         capacity=class_data.capacity,
         is_active=class_data.is_active,
-        name=class_data.code_new or class_data.code_old or f"Class {class_data.campus_name}"
+        name=code_new or code_old or f"Class {class_data.campus_name}"
     )
     
     db.add(cls)
@@ -1949,6 +2361,7 @@ def get_class(
 ):
     """Get a specific class"""
     cls = db.query(ClassModel).filter(ClassModel.class_id == class_id).first()
+    ensure_demo_class_access(cls, current_user)
     if not cls:
         raise HTTPException(status_code=404, detail="Class not found")
     
@@ -1974,21 +2387,24 @@ def update_class(
 ):
     """Update a class"""
     cls = db.query(ClassModel).filter(ClassModel.class_id == class_id).first()
+    ensure_demo_class_access(cls, current_user)
     if not cls:
         raise HTTPException(status_code=404, detail="Class not found")
     
     # Check for duplicate codes (excluding current class)
-    if class_data.code_new and class_data.code_new != cls.code_new:
+    updated_code_new = demo_class_code(class_data.code_new, current_user) if class_data.code_new else None
+    updated_code_old = demo_class_code(class_data.code_old, current_user) if class_data.code_old else None
+    if updated_code_new and updated_code_new != cls.code_new:
         existing = db.query(ClassModel).filter(
-            ClassModel.code_new == class_data.code_new,
+            ClassModel.code_new == updated_code_new,
             ClassModel.class_id != class_id
         ).first()
         if existing:
             raise HTTPException(status_code=400, detail="Class with this new code already exists")
     
-    if class_data.code_old and class_data.code_old != cls.code_old:
+    if updated_code_old and updated_code_old != cls.code_old:
         existing = db.query(ClassModel).filter(
-            ClassModel.code_old == class_data.code_old,
+            ClassModel.code_old == updated_code_old,
             ClassModel.class_id != class_id
         ).first()
         if existing:
@@ -1996,6 +2412,8 @@ def update_class(
     
     # Update fields
     for field, value in class_data.dict(exclude_unset=True).items():
+        if field in {"code_new", "code_old"}:
+            value = demo_class_code(value, current_user)
         setattr(cls, field, value)
     
     # Update name if codes changed
@@ -2027,6 +2445,7 @@ def delete_class(
 ):
     """Delete a class (with safety checks)"""
     cls = db.query(ClassModel).filter(ClassModel.class_id == class_id).first()
+    ensure_demo_class_access(cls, current_user)
     if not cls:
         raise HTTPException(status_code=404, detail="Class not found")
     

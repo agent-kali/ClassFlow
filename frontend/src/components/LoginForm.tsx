@@ -13,7 +13,10 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
   });
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const busy = loading || demoLoading;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,6 +30,20 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDemoLogin = async () => {
+    setError('');
+    setDemoLoading(true);
+
+    try {
+      await api.demoLogin();
+      onLoginSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Demo login failed. Please try again.');
+    } finally {
+      setDemoLoading(false);
     }
   };
 
@@ -95,7 +112,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
                   placeholder="Enter your username"
                   value={credentials.username}
                   onChange={handleInputChange('username')}
-                  disabled={loading}
+                  disabled={busy}
                 />
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                   <svg className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.3)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -125,7 +142,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
                   placeholder="Enter your password"
                   value={credentials.password}
                   onChange={handleInputChange('password')}
-                  disabled={loading}
+                  disabled={busy}
                 />
                 <button
                   type="button"
@@ -165,7 +182,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
             {/* Sign in button */}
             <button
               type="submit"
-              disabled={loading}
+              disabled={busy}
               className="w-full py-3.5 px-8 rounded-xl text-sm font-bold text-white
                 bg-gradient-to-r from-accent-600 to-accent-500
                 hover:from-accent-500 hover:to-accent-400
@@ -189,6 +206,47 @@ const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
               )}
             </button>
           </form>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 my-6">
+            <div className="flex-1 h-px bg-white/[0.08]" />
+            <span className="text-xs text-white/30 uppercase tracking-wide">or</span>
+            <div className="flex-1 h-px bg-white/[0.08]" />
+          </div>
+
+          {/* Demo button */}
+          <button
+            type="button"
+            onClick={handleDemoLogin}
+            disabled={busy}
+            className="w-full py-3.5 px-8 rounded-xl text-sm font-semibold
+              text-white/80 bg-white/[0.04] border border-white/[0.08]
+              hover:bg-white/[0.08] hover:text-white hover:border-white/[0.15]
+              transition-all duration-200
+              disabled:opacity-50 disabled:cursor-not-allowed
+              focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent-500/40 focus:ring-offset-base"
+          >
+            {demoLoading ? (
+              <div className="flex items-center justify-center">
+                <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white/70" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Loading demo...
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Try Demo Account
+              </div>
+            )}
+          </button>
         </div>
       </div>
     </div>
