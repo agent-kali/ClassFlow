@@ -56,9 +56,19 @@ jobs:
 
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          # Strip Windows CRLF (breaks OpenSSH); match GitLab CI pattern
-          printf '%s\n' "${SSH_PRIVATE_KEY}" | tr -d '\r' > ~/.ssh/id_ed25519
+
+          # PEM multiline key OR single-line base64 of the raw key file (avoids paste corruption in GitHub UI).
+          if printf '%s' "${SSH_PRIVATE_KEY}" | grep -q '^-----BEGIN'; then
+            printf '%s\n' "${SSH_PRIVATE_KEY}" | tr -d '\r' > ~/.ssh/id_ed25519
+          else
+            printf '%s' "${SSH_PRIVATE_KEY}" | tr -d ' \t\r\n' | base64 -d > ~/.ssh/id_ed25519
+          fi
           chmod 600 ~/.ssh/id_ed25519
+
+          if ! ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null 2>&1; then
+            echo "::error::SSH_PRIVATE_KEY is invalid (ssh-keygen cannot read it). Fix: on your Mac run: base64 -b 0 -i ~/.ssh/classflow_github_deploy | pbcopy — then update the GitHub secret with that single line (no BEGIN/END lines). Or: pbcopy < ~/.ssh/classflow_github_deploy and paste the full key without reformatting."
+            exit 1
+          fi
 
           PORT="${DEPLOY_PORT:-22}"
           ssh-keyscan -p "${PORT}" -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts 2>/dev/null
@@ -78,7 +88,6 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           DEPLOY_BRANCH: ${{ secrets.DEPLOY_BRANCH }}
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           PORT="${DEPLOY_PORT:-22}"
           BRANCH="${DEPLOY_BRANCH:-main}"

@@ -294,7 +294,7 @@ Set the following values as GitLab CI variables or GitHub Actions repository sec
 - `DEPLOY_HOST`: Public IP or domain of the VPS.
 - `DEPLOY_USER`: SSH user (e.g., `root`).
 - `DEPLOY_PATH`: Absolute path to the project on the VPS (e.g., `/opt/e-home`).
-- `SSH_PRIVATE_KEY`: Private key with access to the VPS (Base64 encoded or plain text).
+- `SSH_PRIVATE_KEY`: Private key with access to the VPS. Paste the full OpenSSH PEM (`-----BEGIN OPENSSH PRIVATE KEY-----` … `-----END …`), or a **single line** base64 of the key file (macOS: `base64 -b 0 -i ~/.ssh/your-key | pbcopy`; Linux: `base64 -w0 < ~/.ssh/your-key | xclip -selection clipboard`). The GitHub Actions workflow accepts either form.
 - `DEPLOY_PORT` (optional): SSH port, defaults to `22`.
 - `DEPLOY_BRANCH` (optional): Branch to deploy, defaults to `main`.
 - `PRODUCTION_DOMAIN` (optional): Domain for environment URL.
@@ -306,6 +306,7 @@ Set the following values as GitLab CI variables or GitHub Actions repository sec
 3. Store the private key:
    - In GitLab as `SSH_PRIVATE_KEY` (protect/mask recommended), or
    - In GitHub as a repository secret named `SSH_PRIVATE_KEY`.
+   - If GitHub shows `error in libcrypto` when connecting, the PEM was likely corrupted when pasting; use the one-line base64 method above instead.
 
 ### Remote Deploy Script
 
