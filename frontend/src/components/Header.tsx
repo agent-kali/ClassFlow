@@ -21,11 +21,6 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  // For teacher users, show no header
-  if (user && user.role === 'teacher') {
-    return null;
-  }
-
   const toggleMobileMenu = () => setIsMobileMenuOpen(!isMobileMenuOpen);
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 

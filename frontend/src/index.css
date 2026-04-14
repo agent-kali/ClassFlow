@@ -674,3 +674,17 @@ textarea:-webkit-autofill {
 .page-container-lg { max-width: var(--content-max-width-lg); }
 .page-container-xl { max-width: var(--content-max-width-xl); }
 .page-container-full { max-width: var(--content-max-width-full); }
+
+/* ─── Sidebar Layout ─── */
+.sidebar-bg {
+  background-color: #08080c;
+}
+
+@keyframes sidebarSlideIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.sidebar-drawer-enter {
+  animation: sidebarSlideIn 200ms ease-out forwards;
+}

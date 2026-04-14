@@ -2,7 +2,9 @@ import React from 'react';
 import { api, auth } from '../api/client';
 import type { LessonOut, Teacher } from '../api/types';
 import LessonCard from './LessonCard';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import SidebarLayout from './SidebarLayout';
+import SidebarSection from './SidebarSection';
+import { useNavigate } from 'react-router-dom';
 import { format, addDays } from 'date-fns';
 import { getWeekStart, setAcademicAnchor, getWeekNumber } from '../lib/time';
 import { getWeekForDate } from '../lib/monthWeeks';
@@ -21,9 +23,13 @@ type Filters = {
 };
 
 export const TeacherTimeline: React.FC = () => {
+  const currentUser = auth.getUser();
+  const selectedTeacherStorageKey = currentUser
+    ? `selectedTeacherId:${currentUser.username}`
+    : 'selectedTeacherId';
   const [teachers, setTeachers] = React.useState<Teacher[]>([]);
   const [selectedTeacherId, setSelectedTeacherId] = React.useState<number | undefined>(() => {
-    const saved = localStorage.getItem('selectedTeacherId');
+    const saved = localStorage.getItem(selectedTeacherStorageKey);
     return saved ? Number(saved) : undefined;
   });
   const [week, setWeek] = React.useState<number | undefined>(undefined);
@@ -36,12 +42,6 @@ export const TeacherTimeline: React.FC = () => {
   const [error, setError] = React.useState<string | null>(null);
   const [weekly, setWeekly] = React.useState<LessonOut[] | null>(null);
   const navigate = useNavigate();
-  const location = useLocation();
-
-  const handleLogout = () => {
-    api.logout();
-    navigate('/login');
-  };
 
   React.useEffect(() => {
     api
@@ -65,7 +65,7 @@ export const TeacherTimeline: React.FC = () => {
         }
       })
       .catch((e) => setError(String(e)));
-  }, [selectedTeacherId]);
+  }, [selectedTeacherStorageKey, selectedTeacherId]);
 
   React.useEffect(() => {
     api.getAnchor()
@@ -84,6 +84,7 @@ export const TeacherTimeline: React.FC = () => {
   async function load() {
     if (selectedTeacherId === undefined) return;
     if (!anchorLoaded || week === undefined) return;
+    if (!teachers.some((teacher) => teacher.teacher_id === selectedTeacherId)) return;
     setLoading(true);
     setError(null);
     setLessons(null);
@@ -118,14 +119,15 @@ export const TeacherTimeline: React.FC = () => {
 
   React.useEffect(() => {
     if (selectedTeacherId !== undefined) {
-      localStorage.setItem('selectedTeacherId', String(selectedTeacherId));
+      localStorage.setItem(selectedTeacherStorageKey, String(selectedTeacherId));
       load();
     }
-  }, [selectedTeacherId, week, day, campus, grouped, anchorLoaded]);
+  }, [selectedTeacherId, week, day, campus, grouped, anchorLoaded, teachers, selectedTeacherStorageKey]);
 
   React.useEffect(() => {
     if (selectedTeacherId === undefined) return;
     if (!anchorLoaded || week === undefined) return;
+    if (!teachers.some((teacher) => teacher.teacher_id === selectedTeacherId)) return;
 
     const weekStart = getWeekStart(week);
     const targetDate = week >= 7 ? addDays(weekStart, 1) : weekStart;
@@ -147,7 +149,7 @@ export const TeacherTimeline: React.FC = () => {
       .getTeacherSchedule(selectedTeacherId, overviewFilters)
       .then(setWeekly)
       .catch(() => setWeekly(null));
-  }, [selectedTeacherId, week, campus, grouped, anchorLoaded]);
+  }, [selectedTeacherId, week, campus, grouped, anchorLoaded, teachers]);
 
   const toMinutes = (t: string) => {
     const [h, m] = t.split(':').map(Number);
@@ -231,72 +233,226 @@ export const TeacherTimeline: React.FC = () => {
     return counts;
   }, [weekly, campus]);
 
-  const currentUser = auth.getUser();
-  const isTeacherUser = currentUser?.role === 'teacher';
+  const totalTeachingMinutes = React.useMemo(() => {
+    return displayLessons.reduce((sum, l) => {
+      return sum + (toMinutes(l.end_time) - toMinutes(l.start_time));
+    }, 0);
+  }, [displayLessons]);
 
-  const containerClass = "page-container page-container-xl";
+  const nextLessonTime = React.useMemo(() => {
+    if (day !== todayDay()) return null;
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const upcoming = displayLessons.find(l => toMinutes(l.start_time) > nowMin);
+    return upcoming ? upcoming.start_time.slice(0, 5) : null;
+  }, [displayLessons, day]);
 
-  return (
-    <div className="min-h-screen bg-base overflow-x-hidden">
-      {/* Teacher-only header (branding + user info only — actions live in the nav bar below) */}
-      {isTeacherUser && (
-        <div className="sticky top-0 z-50 glass-nav">
-          <div className="px-4 py-3">
-            <div className="flex items-center justify-between">
-              <h1 className="text-lg font-bold text-white font-display">ClassFlow</h1>
-              <div className="flex items-center gap-3">
-                {auth.getUser() && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-white/60">{auth.getUser()?.username}</span>
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-accent-500/15 text-accent-300">
-                      {auth.getUser()?.role}
-                    </span>
-                  </div>
-                )}
-                <button
-                  onClick={handleLogout}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                  title="Sign out"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                </button>
-              </div>
+  const formatHours = (mins: number) => {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    if (h === 0) return `${m}m`;
+    if (m === 0) return `${h}h`;
+    return `${h}h ${m}m`;
+  };
+
+  /* ─── Sidebar ─── */
+  const sidebarContent = (
+    <>
+      {/* Teacher selector */}
+      <SidebarSection>
+        <div className="flex flex-col items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-3">
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+            style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
+            {(() => {
+              const name = teachers.find((t) => t.teacher_id === selectedTeacherId)?.name || '?';
+              return name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+            })()}
+          </div>
+          <select
+            className="w-full rounded-lg border border-white/[0.08] bg-transparent px-2 py-1.5 text-sm font-semibold text-white text-center focus:border-accent-500 focus:outline-none truncate"
+            value={selectedTeacherId ?? ''}
+            onChange={(e) => setSelectedTeacherId(e.target.value ? Number(e.target.value) : undefined)}
+            title={teachers.find((t) => t.teacher_id === selectedTeacherId)?.name || 'Select Teacher'}
+          >
+            <option value="">Select Teacher…</option>
+            {teachers.map((t) => (
+              <option key={t.teacher_id} value={t.teacher_id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </SidebarSection>
+
+      {/* Campus filter */}
+      <SidebarSection label="Campus">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {[
+            { label: 'All', value: undefined },
+            { label: 'E1', value: 'E1' },
+            { label: 'E2', value: 'E2' },
+          ].map((c) => {
+            const active = campus === c.value || (c.value === undefined && campus === undefined);
+            return (
+              <button
+                key={c.label}
+                className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition-all
+                  ${active
+                    ? 'border-accent-500/40 bg-accent-500/15 text-accent-300 shadow-sm'
+                    : c.value === 'E1'
+                      ? 'border-blue-500/20 text-blue-400/60 hover:bg-blue-500/10 hover:text-blue-400'
+                      : c.value === 'E2'
+                        ? 'border-emerald-500/20 text-emerald-400/60 hover:bg-emerald-500/10 hover:text-emerald-400'
+                        : 'border-white/[0.08] text-white/40 hover:text-white/70 hover:border-white/[0.12]'
+                  }`}
+                onClick={() => setCampus(c.value)}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+      </SidebarSection>
+
+      {/* Week navigator */}
+      <SidebarSection label="Week">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/[0.08] text-white/40 hover:text-white/80 hover:border-white/[0.15] hover:bg-white/[0.04] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            onClick={() => setWeek((w) => {
+              if (w === undefined) return getWeekNumber(new Date());
+              return w > 1 ? w - 1 : 1;
+            })}
+            disabled={!anchorLoaded}
+            aria-label="Previous week"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <div className="text-center min-w-0">
+            <div className="text-sm font-semibold text-white/80 font-mono truncate">
+              {anchorLoaded && week !== undefined && monthWeekInfo
+                ? <>Week {monthWeekInfo.weekNumber}</>
+                : '…'}
+            </div>
+            <div className="text-[11px] text-white/40 truncate">
+              {anchorLoaded && week !== undefined ? getWeekDateRange(week) : ''}
             </div>
           </div>
+          <button
+            className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/[0.08] text-white/40 hover:text-white/80 hover:border-white/[0.15] hover:bg-white/[0.04] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            onClick={() => setWeek((w) => {
+              if (w === undefined) return getWeekNumber(new Date());
+              return w + 1;
+            })}
+            disabled={!anchorLoaded}
+            aria-label="Next week"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
         </div>
-      )}
+      </SidebarSection>
 
-      {/* Navigation Container */}
+      {/* Vertical day list */}
+      <SidebarSection label="Days">
+        <div className="space-y-1">
+          {dayOptions.map((d) => {
+            const count = dayCounts[d] || 0;
+            const active = day === d;
+            const isToday = d === todayDay();
+            const empty = count === 0;
+
+            return (
+              <button
+                key={d}
+                onClick={() => setDay(d)}
+                disabled={empty}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all
+                  ${active
+                    ? 'bg-accent-500/15 text-accent-300 border border-accent-500/30'
+                    : isToday
+                      ? 'bg-accent-500/[0.06] text-accent-400 border border-transparent'
+                      : empty
+                        ? 'text-white/15 opacity-50 cursor-not-allowed border border-transparent'
+                        : 'text-white/60 hover:bg-white/[0.04] hover:text-white/80 border border-transparent'
+                  }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {isToday && <div className="w-1.5 h-1.5 rounded-full bg-accent-400 flex-shrink-0" />}
+                  <span className="font-semibold">{d}</span>
+                  <span className="text-[11px] text-white/30 truncate">{getDayDate(week, d)}</span>
+                </div>
+                {count > 0 && (
+                  <span className={`text-[11px] font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0
+                    ${active ? 'bg-accent-500/30 text-accent-300' : 'bg-white/[0.06] text-white/40'}`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </SidebarSection>
+
+      {/* Divider */}
+      <div className="border-t border-white/[0.06]" />
+
+      {/* Day summary */}
+      <SidebarSection label="Day Summary">
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-white/40">Lessons</span>
+            <span className="text-sm font-semibold text-white/80">{displayLessons.length}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-white/40">Teaching time</span>
+            <span className="text-sm font-semibold text-white/80">{formatHours(totalTeachingMinutes)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-white/40">Next lesson</span>
+            <span className="text-sm font-semibold text-white/80">{nextLessonTime || '—'}</span>
+          </div>
+        </div>
+      </SidebarSection>
+    </>
+  );
+
+  return (
+    <SidebarLayout sidebar={sidebarContent}>
+      {/* Content header */}
       <div className="border-b border-white/[0.06] bg-surface">
-        <div className={`${containerClass} py-4 lg:py-6 space-y-4 lg:space-y-5`}>
-          {/* Title row */}
+        <div className="px-4 lg:px-6 py-4 lg:py-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-xl font-bold text-white font-display">Schedule</h2>
-            <div className="flex items-center gap-3">
-              {/* Action controls */}
+            <div className="flex items-center gap-5">
+              {/* Action buttons */}
               <div className="flex items-center gap-1.5">
                 <button
-                  className="rounded-lg px-3 py-1.5 text-sm font-semibold text-white bg-accent-600 hover:bg-accent-700 transition-colors"
+                  className="rounded-lg border border-white/[0.08] bg-transparent px-3 py-1.5 text-sm font-medium text-white/70 hover:bg-white/[0.06] hover:text-white transition-colors"
                   onClick={() => setDay(todayDay())}
                 >
                   Today
                 </button>
                 <button
-                  className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-sm font-medium text-white/60 hover:text-white/90 hover:bg-white/[0.06] transition-colors"
+                  className="rounded-lg border border-white/[0.08] bg-transparent w-8 h-8 flex items-center justify-center text-white/50 hover:bg-white/[0.06] hover:text-white/90 transition-colors disabled:opacity-40"
                   onClick={load}
                   disabled={loading || selectedTeacherId === undefined}
+                  aria-label="Reload"
+                  title="Reload"
                 >
-                  {loading ? 'Loading…' : 'Reload'}
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M20.016 4.66v4.993" />
+                  </svg>
                 </button>
               </div>
 
-              {/* View navigation segmented control */}
-              <div className="flex rounded-lg border border-white/[0.06] bg-base/60 p-0.5">
+              {/* View mode segmented control */}
+              <div className="flex rounded-lg border border-white/[0.08] bg-white/[0.03] p-0.5">
                 <button
-                  className="rounded-md px-3 py-1.5 text-sm font-semibold bg-white/[0.06] text-white/90 transition-colors"
+                  className="rounded-md px-3 py-1.5 text-sm font-semibold bg-accent-500 text-white transition-colors"
                   disabled
                 >
                   Day
@@ -325,130 +481,12 @@ export const TeacherTimeline: React.FC = () => {
               </div>
             </div>
           </div>
-
-          {/* Teacher selector + campus pills */}
-          <div className="rounded-2xl border border-white/[0.06] bg-elevated px-3 py-3 lg:px-5 lg:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 lg:gap-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full text-xs font-bold text-white"
-                style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
-                {(() => {
-                  const name = teachers.find((t) => t.teacher_id === selectedTeacherId)?.name || '?';
-                  return name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
-                })()}
-              </div>
-              <select
-                className="w-full sm:min-w-[180px] rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white focus:border-accent-500 focus:outline-none"
-                value={selectedTeacherId ?? ''}
-                onChange={(e) => setSelectedTeacherId(e.target.value ? Number(e.target.value) : undefined)}
-              >
-                <option value="">Select Teacher…</option>
-                {teachers.map((t) => (
-                  <option key={t.teacher_id} value={t.teacher_id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              {[
-                { label: 'All', value: undefined },
-                { label: 'E1', value: 'E1' },
-                { label: 'E2', value: 'E2' },
-              ].map((c) => {
-                const active = campus === c.value || (c.value === undefined && campus === undefined);
-                return (
-                  <button
-                    key={c.label}
-                    className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition-all flex-shrink-0
-                      ${active
-                        ? 'border-accent-500/40 bg-accent-500/15 text-accent-300 shadow-sm'
-                        : c.value === 'E1'
-                          ? 'border-blue-500/20 text-blue-400/60 hover:bg-blue-500/10 hover:text-blue-400'
-                          : c.value === 'E2'
-                            ? 'border-emerald-500/20 text-emerald-400/60 hover:bg-emerald-500/10 hover:text-emerald-400'
-                            : 'border-white/[0.08] text-white/40 hover:text-white/70 hover:border-white/[0.12]'
-                      }`}
-                    onClick={() => setCampus(c.value)}
-                  >
-                    {c.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Week navigator */}
-          <div className="flex items-center justify-center gap-3">
-            <button
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.08] text-white/40 hover:text-white/80 hover:border-white/[0.15] hover:bg-white/[0.04] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-              onClick={() => setWeek((w) => {
-                if (w === undefined) return getWeekNumber(new Date());
-                return w > 1 ? w - 1 : 1;
-              })}
-              disabled={!anchorLoaded}
-              aria-label="Previous week"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div className="rounded-full border border-white/[0.08] bg-white/[0.04] px-5 py-1.5 text-sm font-semibold text-white/80 font-mono">
-              {anchorLoaded && week !== undefined && monthWeekInfo
-                ? <>Week {monthWeekInfo.weekNumber} | {getWeekDateRange(week)}</>
-                : 'Loading current week…'}
-            </div>
-            <button
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.08] text-white/40 hover:text-white/80 hover:border-white/[0.15] hover:bg-white/[0.04] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-              onClick={() => setWeek((w) => {
-                if (w === undefined) return getWeekNumber(new Date());
-                return w + 1;
-              })}
-              disabled={!anchorLoaded}
-              aria-label="Next week"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Day tabs */}
-          <div className="rounded-2xl border border-white/[0.06] bg-elevated px-2 py-2 lg:px-3 lg:py-3">
-            <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
-              {dayOptions.map((d) => {
-                const empty = (dayCounts[d] || 0) === 0;
-                const active = day === d;
-                const isToday = d === todayDay();
-                return (
-                  <button
-                    key={d}
-                    className={`flex-shrink-0 min-w-[60px] px-3 py-2 text-sm font-semibold rounded-lg border transition-all
-                      ${active
-                        ? 'border-accent-500/40 bg-accent-500/15 text-accent-300 shadow-sm'
-                        : isToday
-                          ? 'border-accent-500/20 bg-accent-500/[0.06] text-accent-400/80'
-                          : empty
-                            ? 'border-transparent bg-transparent text-white/20 cursor-not-allowed'
-                            : 'border-transparent text-white/50 hover:bg-white/[0.04] hover:text-white/80'
-                      }`}
-                    title={empty ? 'No lessons' : `${dayCounts[d] || 0} lesson${dayCounts[d] !== 1 ? 's' : ''}`}
-                    aria-pressed={active}
-                    onClick={() => setDay(d)}
-                    disabled={empty}
-                  >
-                    {d}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className={`${containerClass} py-4`}>
-        {/* Error toast */}
+      {/* Lessons content */}
+      <div className="px-4 lg:px-6 py-4">
+        <div className="max-w-3xl">
         {error && (
           <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/[0.08] p-3">
             <div className="flex items-start gap-2">
@@ -468,7 +506,6 @@ export const TeacherTimeline: React.FC = () => {
           </div>
         )}
 
-        {/* Loading skeletons */}
         {loading && (!displayLessons || displayLessons.length === 0) && (
           <div className="space-y-3">
             {[0, 1, 2].map((i) => (
@@ -485,7 +522,6 @@ export const TeacherTimeline: React.FC = () => {
           </div>
         )}
 
-        {/* Empty state */}
         {!loading && selectedTeacherId !== undefined && displayLessons.length === 0 && (
           <div className="text-center py-16">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
@@ -500,7 +536,6 @@ export const TeacherTimeline: React.FC = () => {
           </div>
         )}
 
-        {/* Day Header */}
         {displayLessons.length > 0 && (
           <div className="mb-4">
             <div className="border-b border-accent-500/20 pb-3">
@@ -519,7 +554,6 @@ export const TeacherTimeline: React.FC = () => {
           </div>
         )}
 
-        {/* Lessons List */}
         {displayLessons.length > 0 && (
           <div className="space-y-3">
             {displayLessons.map((l, idx) => {
@@ -559,8 +593,9 @@ export const TeacherTimeline: React.FC = () => {
             })}
           </div>
         )}
+        </div>
       </div>
-    </div>
+    </SidebarLayout>
   );
 };
 

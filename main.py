@@ -541,21 +541,19 @@ def ensure_demo_data(db: Session) -> None:
             if lesson_conditions else []
         )
 
-        if invalid_demo_records or (demo_teachers and demo_classes and not demo_lessons):
+        has_legacy_day_names = any(
+            lesson.day in demo_day_updates
+            for lesson in demo_lessons
+            if lesson is not None and getattr(lesson, "day", None) is not None
+        )
+
+        if invalid_demo_records or has_legacy_day_names or (demo_teachers and demo_classes and not demo_lessons):
             if lesson_conditions:
                 db.query(Lesson).filter(or_(*lesson_conditions)).delete(synchronize_session="fetch")
             db.query(Teacher).filter(Teacher.name.like(f"{DEMO_TEACHER_PREFIX}%")).delete(synchronize_session="fetch")
             db.query(ClassModel).filter(ClassModel.code_new.like(f"{DEMO_CLASS_PREFIX}%")).delete(synchronize_session="fetch")
             db.commit()
         else:
-            changed = False
-            for lesson in demo_lessons:
-                normalized_day = demo_day_updates.get(lesson.day)
-                if normalized_day and normalized_day != lesson.day:
-                    lesson.day = normalized_day
-                    changed = True
-            if changed:
-                db.commit()
             return
 
     ctx = _demo_week_context()
