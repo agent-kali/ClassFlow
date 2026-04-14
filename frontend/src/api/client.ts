@@ -1,10 +1,11 @@
-const DEFAULT_BASE_URL = 'http://localhost:8000';
+// In Vite dev, use same-origin URLs so requests go through vite.config.ts → 127.0.0.1:8000 (fewer hangs than browser → localhost:8000).
+const DEFAULT_BASE_URL = 'http://127.0.0.1:8000';
 
 const baseUrl =
   (typeof import.meta !== 'undefined' &&
     (import.meta as any).env &&
     (import.meta as any).env.VITE_API_BASE_URL) ||
-  DEFAULT_BASE_URL;
+  ((import.meta as any).env?.DEV ? '' : DEFAULT_BASE_URL);
 
 function toQuery(params: Record<string, unknown>): string {
   const query = new URLSearchParams();
@@ -52,12 +53,20 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     headers.Authorization = `Bearer ${token}`;
   }
 
+  const timeoutSignal =
+    typeof AbortSignal !== 'undefined' &&
+    typeof (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout ===
+      'function'
+      ? (AbortSignal as unknown as { timeout: (ms: number) => AbortSignal }).timeout(45000)
+      : undefined;
+
   try {
     const res = await fetch(`${baseUrl}${path}`, {
       headers,
       ...init,
+      signal: init?.signal ?? timeoutSignal,
     });
-    
+
     if (!res.ok) {
       if (res.status === 401) {
         // Token expired or invalid, clear auth data
@@ -70,6 +79,16 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     }
     return res.json() as Promise<T>;
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    const aborted =
+      (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') ||
+      (error instanceof Error && error.name === 'AbortError') ||
+      /signal timed out/i.test(msg);
+    if (aborted) {
+      throw new Error(
+        'The API did not respond in time. Run one `npm run dev` from the project root so uvicorn starts cleanly, or free port 8000: kill $(lsof -tiTCP:8000 -sTCP:LISTEN)',
+      );
+    }
     // Handle network errors more gracefully
     if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
       throw new Error('Network error: Unable to connect to server. Please check your connection and try again.');
@@ -77,17 +96,6 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     throw error;
   }
 }
-
-export type ScheduleFilter = {
-  week?: number;
-  day?: string;
-  campus?: string;
-  grouped?: boolean;
-  // Month-based week parameters
-  month?: number;
-  year?: number;
-  week_number?: number;
-};
 
 import type { 
   LessonOut, 

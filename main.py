@@ -20,6 +20,7 @@ import calendar
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 # Month-based week utility functions
 def get_first_monday_of_month(year: int, month: int) -> datetime:
     """Get the first Monday of a given month"""
@@ -1937,7 +1938,7 @@ def get_teacher_schedule(
         raise HTTPException(404, f"Teacher with id {teacher_id} not found")
     
     rows = _get_schedule_rows(db, current_user=current_user, teacher_id=teacher_id, week=week, day=day, campus=campus, month=month, year=year, week_number=week_number)
-    
+
     # If no rows, return an empty list (better UX for frontend)
     if not rows:
         return []

@@ -10,7 +10,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
@@ -20,6 +20,6 @@
       "@views/*": ["src/views/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "vite.config.ts"]
 }
 

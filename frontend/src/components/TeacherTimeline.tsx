@@ -43,6 +43,11 @@ export const TeacherTimeline: React.FC = () => {
   const [weekly, setWeekly] = React.useState<LessonOut[] | null>(null);
   const navigate = useNavigate();
 
+  const teacherIdsKey = React.useMemo(
+    () => teachers.map((t) => t.teacher_id).join(','),
+    [teachers],
+  );
+
   React.useEffect(() => {
     api
       .listTeachers()
@@ -122,7 +127,7 @@ export const TeacherTimeline: React.FC = () => {
       localStorage.setItem(selectedTeacherStorageKey, String(selectedTeacherId));
       load();
     }
-  }, [selectedTeacherId, week, day, campus, grouped, anchorLoaded, teachers, selectedTeacherStorageKey]);
+  }, [selectedTeacherId, week, day, campus, grouped, anchorLoaded, teacherIdsKey, selectedTeacherStorageKey]);
 
   React.useEffect(() => {
     if (selectedTeacherId === undefined) return;
@@ -149,7 +154,7 @@ export const TeacherTimeline: React.FC = () => {
       .getTeacherSchedule(selectedTeacherId, overviewFilters)
       .then(setWeekly)
       .catch(() => setWeekly(null));
-  }, [selectedTeacherId, week, campus, grouped, anchorLoaded, teachers]);
+  }, [selectedTeacherId, week, campus, grouped, anchorLoaded, teacherIdsKey]);
 
   const toMinutes = (t: string) => {
     const [h, m] = t.split(':').map(Number);

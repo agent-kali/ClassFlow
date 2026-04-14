@@ -139,7 +139,10 @@ export const WeekView: React.FC = () => {
       : api.getTeacherSchedule(teacherId as number, apiParams);
 
     fetchPromise
-      .then((data) => { setLessons(data); setError(null); })
+      .then((data) => {
+        setLessons(data);
+        setError(null);
+      })
       .catch((e) => setError(String(e)));
   }, [grouped, showAllTeachers, teacherId, weekNumber, canEdit, anchorLoaded, teachers]);
 

@@ -112,7 +112,6 @@ export const MonthView: React.FC = () => {
 
     fetchPromise
       .then((data) => {
-        if (Array.isArray(data)) (window as any).__LESSON_DATA__ = data;
         setLessons(data);
         setError(null);
       })
