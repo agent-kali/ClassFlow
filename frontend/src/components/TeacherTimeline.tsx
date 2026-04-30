@@ -9,6 +9,8 @@ import { type ScheduleViewMode } from './ScheduleViewSwitcher';
 import SidebarLayout from './SidebarLayout';
 import SidebarSection from './SidebarSection';
 import { format, addDays } from 'date-fns';
+import { ChevronDownIcon } from '@heroicons/react/24/outline';
+import { getInitials } from '../lib/avatar';
 import { getWeekStart, setAcademicAnchor, getWeekNumber } from '../lib/time';
 import { getWeekForDate } from '../lib/monthWeeks';
 import {
@@ -360,6 +362,7 @@ export const TeacherTimeline: React.FC = () => {
     Sat: 'Saturday',
     Sun: 'Sunday',
   };
+  const selectedTeacherName = teachers.find((t) => t.teacher_id === selectedTeacherId)?.name;
 
   const openCreateModal = () => {
     if (!canEdit) return;
@@ -391,28 +394,28 @@ export const TeacherTimeline: React.FC = () => {
   const sidebarContent = (
     <>
       {/* Teacher selector */}
-      <SidebarSection>
-        <div className="flex flex-col items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-3">
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+      <SidebarSection label="Teacher">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
             style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
-            {(() => {
-              const name = teachers.find((t) => t.teacher_id === selectedTeacherId)?.name || '?';
-              return name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
-            })()}
+            {getInitials(selectedTeacherName)}
           </div>
-          <select
-            className="w-full rounded-lg border border-white/[0.08] bg-transparent px-2 py-1.5 text-sm font-semibold text-white text-center focus:border-accent-500 focus:outline-none truncate"
-            value={selectedTeacherId ?? ''}
-            onChange={(e) => setSelectedTeacherId(e.target.value ? Number(e.target.value) : undefined)}
-            title={teachers.find((t) => t.teacher_id === selectedTeacherId)?.name || 'Select Teacher'}
-          >
-            <option value="">Select Teacher…</option>
-            {teachers.map((t) => (
-              <option key={t.teacher_id} value={t.teacher_id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+          <div className="relative min-w-0 flex-1">
+            <select
+              className="w-full appearance-none bg-transparent py-1.5 pl-0 pr-7 text-sm font-semibold text-white focus:outline-none truncate cursor-pointer"
+              value={selectedTeacherId ?? ''}
+              onChange={(e) => setSelectedTeacherId(e.target.value ? Number(e.target.value) : undefined)}
+              title={selectedTeacherName || 'Select Teacher'}
+            >
+              <option value="">Select Teacher…</option>
+              {teachers.map((t) => (
+                <option key={t.teacher_id} value={t.teacher_id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDownIcon className="pointer-events-none absolute right-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
+          </div>
         </div>
       </SidebarSection>
 

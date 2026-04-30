@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { User } from '../api/types';
+import { getInitials } from '../lib/avatar';
 
 interface HeaderProps {
   user: User | null;
@@ -40,10 +41,7 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
     user && item.roles.includes(user.role)
   );
 
-  // User initials for avatar
-  const initials = user?.username
-    ? user.username.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()
-    : '?';
+  const initials = getInitials(user?.username);
 
   return (
     <header className="glass-nav sticky top-0 z-50">
