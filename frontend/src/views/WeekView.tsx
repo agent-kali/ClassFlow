@@ -2,11 +2,18 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { api, auth } from '@/api/client';
 import type { LessonOut, LessonCreate, LessonUpdate, Teacher } from '@/api/types';
 import { setAcademicAnchor, getWeekNumber, getWeekStart } from '@/lib/time';
-import { getWeekForDate, getWeeksForMonth, getAdjacentMonth } from '@/lib/monthWeeks';
+import { getWeekForDate } from '@/lib/monthWeeks';
 import PeriodGrid from '@/components/PeriodGrid';
+import SchedulePageHeader from '@/components/SchedulePageHeader';
+import { type ScheduleViewMode } from '@/components/ScheduleViewSwitcher';
 import SidebarLayout from '@/components/SidebarLayout';
 import SidebarSection from '@/components/SidebarSection';
-import { useSearchParams, Link } from 'react-router-dom';
+import {
+  formatScheduleDate,
+  parseScheduleDate,
+  setScheduleDateParam,
+} from '@/lib/scheduleDate';
+import { useSearchParams } from 'react-router-dom';
 import { format, addDays } from 'date-fns';
 import {
   ChevronDownIcon,
@@ -32,6 +39,12 @@ type FeedbackState = {
 
 const MIN_WEEK = 1;
 
+const parseWeekParam = (value: string | null): number | null => {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= MIN_WEEK ? Math.floor(parsed) : null;
+};
+
 const DAYS: Array<"Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun"> = [
   "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun",
 ];
@@ -52,6 +65,7 @@ export const WeekView: React.FC = () => {
   const [teacherSearch, setTeacherSearch] = useState<string>('');
   const [params, setParams] = useSearchParams();
   const teacherParam = params.get('teacher');
+  const weekParam = params.get('week');
   const teacherId = teacherParam ? Number(teacherParam) : undefined;
   const [weekNumber, setWeekNumberState] = useState<number | null>(null);
   const [anchorLoaded, setAnchorLoaded] = useState<boolean>(false);
@@ -64,18 +78,58 @@ export const WeekView: React.FC = () => {
     api.getAnchor()
       .then(({ anchor_date }) => {
         setAcademicAnchor(anchor_date);
+        const legacyWeek = parseWeekParam(weekParam);
+        const selectedDate = parseScheduleDate(params.get('date')) ||
+          (legacyWeek ? getWeekStart(legacyWeek) : new Date());
+        const initialWeek = getWeekNumber(selectedDate);
+
         setAnchorLoaded(true);
-        setWeekNumberState(getWeekNumber(new Date()));
+        setWeekNumberState(initialWeek);
+
+        if (!parseScheduleDate(params.get('date'))) {
+          const nextParams = new URLSearchParams(params);
+          setScheduleDateParam(nextParams, selectedDate);
+          setParams(nextParams, { replace: true });
+        }
       })
       .catch(() => {
+        const legacyWeek = parseWeekParam(weekParam);
+        const selectedDate = parseScheduleDate(params.get('date')) ||
+          (legacyWeek ? getWeekStart(legacyWeek) : new Date());
+        const initialWeek = getWeekNumber(selectedDate);
+
         setAnchorLoaded(true);
-        setWeekNumberState(getWeekNumber(new Date()));
+        setWeekNumberState(initialWeek);
+
+        if (!parseScheduleDate(params.get('date'))) {
+          const nextParams = new URLSearchParams(params);
+          setScheduleDateParam(nextParams, selectedDate);
+          setParams(nextParams, { replace: true });
+        }
       });
 
     if (canEdit) {
       api.listTeachers().then(setTeachers).catch(() => {});
     }
   }, [canEdit]);
+
+  React.useEffect(() => {
+    if (!anchorLoaded) return;
+
+    const selectedDate = parseScheduleDate(params.get('date'));
+    if (selectedDate) {
+      const parsedWeek = getWeekNumber(selectedDate);
+      if (parsedWeek !== weekNumber) {
+        setWeekNumberState(parsedWeek);
+      }
+      return;
+    }
+
+    const legacyWeek = parseWeekParam(weekParam);
+    if (legacyWeek !== null && legacyWeek !== weekNumber) {
+      setWeekNumberState(legacyWeek);
+    }
+  }, [anchorLoaded, params, weekNumber, weekParam]);
 
   React.useEffect(() => {
     if (!canEdit || showAllTeachers || teachers.length === 0) return;
@@ -189,13 +243,20 @@ export const WeekView: React.FC = () => {
     Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday',
   };
 
+  const setWeekNumber = useCallback((nextWeek: number) => {
+    const effectiveWeek = Math.max(MIN_WEEK, nextWeek);
+    setWeekNumberState(effectiveWeek);
+
+    const nextParams = new URLSearchParams(params);
+    setScheduleDateParam(nextParams, getWeekStart(effectiveWeek));
+    setParams(nextParams, { replace: true });
+  }, [params, setParams]);
+
   const navigateWeek = useCallback((direction: 'prev' | 'next') => {
-    setWeekNumberState((prev) => {
-      if (prev === null) return getWeekNumber(new Date());
-      const next = direction === 'prev' ? prev - 1 : prev + 1;
-      return Math.max(MIN_WEEK, next);
-    });
-  }, []);
+    const currentWeek = weekNumber ?? getWeekNumber(new Date());
+    const next = direction === 'prev' ? currentWeek - 1 : currentWeek + 1;
+    setWeekNumber(next);
+  }, [setWeekNumber, weekNumber]);
 
   const handleTeacherChange = (newTeacherId: number | 'all') => {
     const newParams = new URLSearchParams(params);
@@ -226,6 +287,34 @@ export const WeekView: React.FC = () => {
     setLessonToDelete(null);
     setFeedback(null);
   };
+
+  const selectToday = useCallback(() => {
+    const today = new Date();
+    setWeekNumberState(getWeekNumber(today));
+
+    const nextParams = new URLSearchParams(params);
+    setScheduleDateParam(nextParams, today);
+    setParams(nextParams, { replace: true });
+  }, [params, setParams]);
+
+  const openCreateModal = () => {
+    if (!canEdit) return;
+    setSelectedSlot(null);
+    setEditingLesson(null);
+    setIsModalOpen(true);
+    setFeedback(null);
+  };
+
+  const prepareViewParams = useCallback((_targetView: ScheduleViewMode, params: URLSearchParams) => {
+    const currentDate = parseScheduleDate(params.get('date'));
+    const selectedDate = currentDate && getWeekNumber(currentDate) === weekNumber
+      ? currentDate
+      : weekStart;
+    params.set('date', formatScheduleDate(selectedDate));
+    params.delete('week');
+    params.delete('month');
+    params.delete('year');
+  }, [weekNumber, weekStart]);
 
   const computeEndTime = (startTime: string, minutes = 30) => {
     const [hour, minute] = startTime.split(':').map(Number);
@@ -476,25 +565,15 @@ export const WeekView: React.FC = () => {
   return (
     <SidebarLayout sidebar={sidebarContent}>
       <div className="min-h-full bg-base">
-        {/* Content header with edit toggle */}
-        <div className="border-b border-white/[0.06] bg-surface px-4 lg:px-6 py-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-white font-display">Week View</h2>
-            {canEdit && (
-              <button
-                onClick={toggleEditMode}
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  isEditMode
-                    ? 'border-accent-500 bg-accent-500 text-white'
-                    : 'border-white/[0.08] text-white/50 hover:bg-white/[0.04] hover:text-white/80'
-                }`}
-              >
-                <PencilSquareIcon className="h-3.5 w-3.5" />
-                {isEditMode ? 'Editing' : 'Edit'}
-              </button>
-            )}
-          </div>
-        </div>
+        <SchedulePageHeader
+          activeView="week"
+          onToday={selectToday}
+          onReload={fetchLessons}
+          canReload={anchorLoaded && weekNumber !== null}
+          canAddLesson={canEdit}
+          onAddLesson={openCreateModal}
+          prepareViewParams={prepareViewParams}
+        />
 
         {/* Error State */}
         {error && (
@@ -508,6 +587,24 @@ export const WeekView: React.FC = () => {
 
         {/* Calendar Container */}
         <div className="px-4 lg:px-6 py-4 lg:py-6">
+          {canEdit && (
+            <div className="mb-3 flex justify-end">
+              <button
+                type="button"
+                onClick={toggleEditMode}
+                aria-label={isEditMode ? 'Disable edit mode' : 'Enable edit mode'}
+                title={isEditMode ? 'Disable edit mode' : 'Enable edit mode'}
+                className={`inline-flex h-9 min-w-9 items-center justify-center rounded-full border px-2.5 transition-colors ${
+                  isEditMode
+                    ? 'border-accent-500/60 bg-accent-500/15 text-accent-300'
+                    : 'border-white/[0.08] text-white/50 hover:bg-white/[0.04] hover:text-white/80'
+                }`}
+              >
+                <PencilSquareIcon className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
           {isEditMode && canEdit && (
             <div className="mb-4 flex items-center gap-3 rounded-lg border border-accent-500/20 bg-accent-500/[0.06] px-4 py-3 text-sm text-accent-300">
               <PencilSquareIcon className="h-5 w-5" />

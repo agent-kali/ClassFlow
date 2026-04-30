@@ -1,15 +1,26 @@
 import React from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, auth } from '../api/client';
-import type { LessonOut, Teacher } from '../api/types';
+import type { LessonCreate, LessonOut, LessonUpdate, Teacher } from '../api/types';
 import LessonCard from './LessonCard';
+import LessonModal from './LessonModal';
+import SchedulePageHeader from './SchedulePageHeader';
+import { type ScheduleViewMode } from './ScheduleViewSwitcher';
 import SidebarLayout from './SidebarLayout';
 import SidebarSection from './SidebarSection';
-import { useNavigate } from 'react-router-dom';
 import { format, addDays } from 'date-fns';
 import { getWeekStart, setAcademicAnchor, getWeekNumber } from '../lib/time';
 import { getWeekForDate } from '../lib/monthWeeks';
+import {
+  dayOptions,
+  formatScheduleDate,
+  getDateForWeekDay,
+  getScheduleDay,
+  parseScheduleDate,
+  setScheduleDateParam,
+  type ScheduleDay,
+} from '../lib/scheduleDate';
 
-const dayOptions = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const dayOrder: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
 
 type Filters = {
@@ -22,8 +33,15 @@ type Filters = {
   week_number?: number;
 };
 
+type FeedbackState = {
+  type: 'success' | 'error';
+  message: string;
+};
+
 export const TeacherTimeline: React.FC = () => {
   const currentUser = auth.getUser();
+  const canEdit = React.useMemo(() => auth.hasAnyRole(['manager', 'admin']), []);
+  const [params, setParams] = useSearchParams();
   const selectedTeacherStorageKey = currentUser
     ? `selectedTeacherId:${currentUser.username}`
     : 'selectedTeacherId';
@@ -34,14 +52,16 @@ export const TeacherTimeline: React.FC = () => {
   });
   const [week, setWeek] = React.useState<number | undefined>(undefined);
   const [anchorLoaded, setAnchorLoaded] = React.useState<boolean>(false);
-  const [day, setDay] = React.useState<string>('Mon');
+  const [day, setDay] = React.useState<ScheduleDay>('Mon');
   const [campus, setCampus] = React.useState<string | undefined>(undefined);
   const [grouped, setGrouped] = React.useState<boolean>(true);
   const [lessons, setLessons] = React.useState<LessonOut[] | null>(null);
   const [loading, setLoading] = React.useState<boolean>(false);
   const [error, setError] = React.useState<string | null>(null);
   const [weekly, setWeekly] = React.useState<LessonOut[] | null>(null);
-  const navigate = useNavigate();
+  const [isModalOpen, setIsModalOpen] = React.useState<boolean>(false);
+  const [isSaving, setIsSaving] = React.useState<boolean>(false);
+  const [feedback, setFeedback] = React.useState<FeedbackState | null>(null);
 
   const teacherIdsKey = React.useMemo(
     () => teachers.map((t) => t.teacher_id).join(','),
@@ -77,14 +97,46 @@ export const TeacherTimeline: React.FC = () => {
       .then(({ anchor_date }) => {
         setAcademicAnchor(anchor_date);
         setAnchorLoaded(true);
-        setWeek(getWeekNumber(new Date()));
+        const legacyWeek = Number(params.get('week'));
+        const selectedDate = parseScheduleDate(params.get('date')) ||
+          (Number.isFinite(legacyWeek) && legacyWeek >= 1 ? getWeekStart(legacyWeek) : new Date());
+
+        setWeek(getWeekNumber(selectedDate));
+        setDay(getScheduleDay(selectedDate));
+
+        if (!parseScheduleDate(params.get('date'))) {
+          const nextParams = new URLSearchParams(params);
+          setScheduleDateParam(nextParams, selectedDate);
+          setParams(nextParams, { replace: true });
+        }
       })
       .catch((err) => {
         console.warn('Failed to fetch calendar anchor:', err);
         setAnchorLoaded(true);
-        setWeek(getWeekNumber(new Date()));
+        const selectedDate = parseScheduleDate(params.get('date')) || new Date();
+        setWeek(getWeekNumber(selectedDate));
+        setDay(getScheduleDay(selectedDate));
+
+        if (!parseScheduleDate(params.get('date'))) {
+          const nextParams = new URLSearchParams(params);
+          setScheduleDateParam(nextParams, selectedDate);
+          setParams(nextParams, { replace: true });
+        }
       });
   }, []);
+
+  React.useEffect(() => {
+    if (!anchorLoaded) return;
+
+    const selectedDate = parseScheduleDate(params.get('date'));
+    if (!selectedDate) return;
+
+    const nextWeek = getWeekNumber(selectedDate);
+    const nextDay = getScheduleDay(selectedDate);
+
+    if (week !== nextWeek) setWeek(nextWeek);
+    if (day !== nextDay) setDay(nextDay);
+  }, [anchorLoaded, day, params, week]);
 
   async function load() {
     if (selectedTeacherId === undefined) return;
@@ -129,7 +181,7 @@ export const TeacherTimeline: React.FC = () => {
     }
   }, [selectedTeacherId, week, day, campus, grouped, anchorLoaded, teacherIdsKey, selectedTeacherStorageKey]);
 
-  React.useEffect(() => {
+  const loadWeeklyOverview = React.useCallback(() => {
     if (selectedTeacherId === undefined) return;
     if (!anchorLoaded || week === undefined) return;
     if (!teachers.some((teacher) => teacher.teacher_id === selectedTeacherId)) return;
@@ -154,17 +206,45 @@ export const TeacherTimeline: React.FC = () => {
       .getTeacherSchedule(selectedTeacherId, overviewFilters)
       .then(setWeekly)
       .catch(() => setWeekly(null));
-  }, [selectedTeacherId, week, campus, grouped, anchorLoaded, teacherIdsKey]);
+  }, [anchorLoaded, campus, grouped, selectedTeacherId, teachers, week]);
+
+  React.useEffect(() => {
+    loadWeeklyOverview();
+  }, [loadWeeklyOverview]);
 
   const toMinutes = (t: string) => {
     const [h, m] = t.split(':').map(Number);
     return h * 60 + m;
   };
 
-  const todayDay = (): string => {
-    const idx = new Date().getDay();
-    return dayOptions[(idx + 6) % 7];
-  };
+  const todayDay = (): ScheduleDay => getScheduleDay(new Date());
+
+  const updateSelectedDate = React.useCallback((date: Date) => {
+    const nextParams = new URLSearchParams(params);
+    setScheduleDateParam(nextParams, date);
+    if (selectedTeacherId) nextParams.set('teacher', String(selectedTeacherId));
+    setParams(nextParams, { replace: true });
+  }, [params, selectedTeacherId, setParams]);
+
+  const selectWeek = React.useCallback((nextWeek: number) => {
+    const effectiveWeek = Math.max(1, nextWeek);
+    setWeek(effectiveWeek);
+    updateSelectedDate(getDateForWeekDay(effectiveWeek, day));
+  }, [day, updateSelectedDate]);
+
+  const selectDay = React.useCallback((nextDay: ScheduleDay) => {
+    setDay(nextDay);
+    if (week !== undefined) {
+      updateSelectedDate(getDateForWeekDay(week, nextDay));
+    }
+  }, [updateSelectedDate, week]);
+
+  const selectToday = React.useCallback(() => {
+    const today = new Date();
+    setWeek(getWeekNumber(today));
+    setDay(getScheduleDay(today));
+    updateSelectedDate(today);
+  }, [updateSelectedDate]);
 
   const getWeekDateRange = (weekNum: number): string => {
     const weekStart = getWeekStart(weekNum);
@@ -172,7 +252,7 @@ export const TeacherTimeline: React.FC = () => {
     return `${format(weekStart, 'dd/MM')} - ${format(weekEnd, 'dd/MM')}`;
   };
 
-  const getDayDate = (weekNum: number | undefined, dayName: string): string => {
+  const getDayDate = (weekNum: number | undefined, dayName: ScheduleDay): string => {
     if (weekNum === undefined || !anchorLoaded) {
       const today = new Date();
       const dayOfWeek = today.getDay();
@@ -260,6 +340,53 @@ export const TeacherTimeline: React.FC = () => {
     return `${h}h ${m}m`;
   };
 
+  const prepareViewParams = React.useCallback((_targetView: ScheduleViewMode, params: URLSearchParams) => {
+    if (selectedTeacherId) params.set('teacher', String(selectedTeacherId));
+    const selectedDate = week !== undefined
+      ? getDateForWeekDay(week, day)
+      : parseScheduleDate(params.get('date')) || new Date();
+    params.set('date', formatScheduleDate(selectedDate));
+    params.delete('week');
+    params.delete('month');
+    params.delete('year');
+  }, [day, selectedTeacherId, week]);
+
+  const dayNameMap: Record<string, string> = {
+    Mon: 'Monday',
+    Tue: 'Tuesday',
+    Wed: 'Wednesday',
+    Thu: 'Thursday',
+    Fri: 'Friday',
+    Sat: 'Saturday',
+    Sun: 'Sunday',
+  };
+
+  const openCreateModal = () => {
+    if (!canEdit) return;
+    setFeedback(null);
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+  };
+
+  const handleSaveLesson = async (payload: LessonCreate | LessonUpdate) => {
+    try {
+      setIsSaving(true);
+      await api.createLesson(payload as LessonCreate);
+      setFeedback({ type: 'success', message: 'Lesson created successfully.' });
+      closeModal();
+      await load();
+      loadWeeklyOverview();
+    } catch (err) {
+      setFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Failed to create lesson.' });
+      throw err;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   /* ─── Sidebar ─── */
   const sidebarContent = (
     <>
@@ -324,10 +451,7 @@ export const TeacherTimeline: React.FC = () => {
         <div className="flex items-center justify-between gap-2">
           <button
             className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/[0.08] text-white/40 hover:text-white/80 hover:border-white/[0.15] hover:bg-white/[0.04] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-            onClick={() => setWeek((w) => {
-              if (w === undefined) return getWeekNumber(new Date());
-              return w > 1 ? w - 1 : 1;
-            })}
+            onClick={() => selectWeek(week === undefined ? getWeekNumber(new Date()) : week - 1)}
             disabled={!anchorLoaded}
             aria-label="Previous week"
           >
@@ -347,10 +471,7 @@ export const TeacherTimeline: React.FC = () => {
           </div>
           <button
             className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/[0.08] text-white/40 hover:text-white/80 hover:border-white/[0.15] hover:bg-white/[0.04] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-            onClick={() => setWeek((w) => {
-              if (w === undefined) return getWeekNumber(new Date());
-              return w + 1;
-            })}
+            onClick={() => selectWeek(week === undefined ? getWeekNumber(new Date()) : week + 1)}
             disabled={!anchorLoaded}
             aria-label="Next week"
           >
@@ -373,15 +494,14 @@ export const TeacherTimeline: React.FC = () => {
             return (
               <button
                 key={d}
-                onClick={() => setDay(d)}
-                disabled={empty}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all
+                onClick={() => selectDay(d)}
+                className={`w-full flex cursor-default items-center justify-between px-3 py-2 rounded-lg text-sm transition-all
                   ${active
                     ? 'bg-accent-500/15 text-accent-300 border border-accent-500/30'
                     : isToday
                       ? 'bg-accent-500/[0.06] text-accent-400 border border-transparent'
                       : empty
-                        ? 'text-white/15 opacity-50 cursor-not-allowed border border-transparent'
+                        ? 'text-white/15 opacity-50 border border-transparent'
                         : 'text-white/60 hover:bg-white/[0.04] hover:text-white/80 border border-transparent'
                   }`}
               >
@@ -427,67 +547,16 @@ export const TeacherTimeline: React.FC = () => {
 
   return (
     <SidebarLayout sidebar={sidebarContent}>
-      {/* Content header */}
-      <div className="border-b border-white/[0.06] bg-surface">
-        <div className="px-4 lg:px-6 py-4 lg:py-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-xl font-bold text-white font-display">Schedule</h2>
-            <div className="flex items-center gap-5">
-              {/* Action buttons */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  className="rounded-lg border border-white/[0.08] bg-transparent px-3 py-1.5 text-sm font-medium text-white/70 hover:bg-white/[0.06] hover:text-white transition-colors"
-                  onClick={() => setDay(todayDay())}
-                >
-                  Today
-                </button>
-                <button
-                  className="rounded-lg border border-white/[0.08] bg-transparent w-8 h-8 flex items-center justify-center text-white/50 hover:bg-white/[0.06] hover:text-white/90 transition-colors disabled:opacity-40"
-                  onClick={load}
-                  disabled={loading || selectedTeacherId === undefined}
-                  aria-label="Reload"
-                  title="Reload"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M20.016 4.66v4.993" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* View mode segmented control */}
-              <div className="flex rounded-lg border border-white/[0.08] bg-white/[0.03] p-0.5">
-                <button
-                  className="rounded-md px-3 py-1.5 text-sm font-semibold bg-accent-500 text-white transition-colors"
-                  disabled
-                >
-                  Day
-                </button>
-                <button
-                  className="rounded-md px-3 py-1.5 text-sm font-medium text-white/50 hover:text-white/80 hover:bg-white/[0.04] transition-colors"
-                  onClick={() => {
-                    const params = new URLSearchParams();
-                    if (selectedTeacherId) params.set('teacher', String(selectedTeacherId));
-                    if (week) params.set('week', String(week));
-                    navigate(`/week?${params.toString()}`);
-                  }}
-                >
-                  Week
-                </button>
-                <button
-                  className="rounded-md px-3 py-1.5 text-sm font-medium text-white/50 hover:text-white/80 hover:bg-white/[0.04] transition-colors"
-                  onClick={() => {
-                    const params = new URLSearchParams();
-                    if (selectedTeacherId) params.set('teacher', String(selectedTeacherId));
-                    navigate(`/month?${params.toString()}`);
-                  }}
-                >
-                  Month
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <SchedulePageHeader
+        activeView="day"
+        onToday={selectToday}
+        onReload={load}
+        isReloading={loading}
+        canReload={selectedTeacherId !== undefined}
+        canAddLesson={canEdit}
+        onAddLesson={openCreateModal}
+        prepareViewParams={prepareViewParams}
+      />
 
       {/* Lessons content */}
       <div className="px-4 lg:px-6 py-4">
@@ -511,6 +580,23 @@ export const TeacherTimeline: React.FC = () => {
           </div>
         )}
 
+        {feedback && (
+          <div
+            className={`mb-3 rounded-xl border p-3 text-sm ${
+              feedback.type === 'success'
+                ? 'border-green-500/20 bg-green-500/[0.08] text-green-300'
+                : 'border-red-500/20 bg-red-500/[0.08] text-red-400'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex-1">{feedback.message}</span>
+              <button type="button" className="text-xs font-medium underline" onClick={() => setFeedback(null)}>
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
         {loading && (!displayLessons || displayLessons.length === 0) && (
           <div className="space-y-3">
             {[0, 1, 2].map((i) => (
@@ -528,7 +614,7 @@ export const TeacherTimeline: React.FC = () => {
         )}
 
         {!loading && selectedTeacherId !== undefined && displayLessons.length === 0 && (
-          <div className="text-center py-16">
+          <div className="rounded-2xl border border-white/[0.06] bg-elevated px-6 py-12 text-center shadow-card">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
               style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.15)' }}>
               <svg className="w-8 h-8 text-accent-400/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -537,7 +623,18 @@ export const TeacherTimeline: React.FC = () => {
               </svg>
             </div>
             <div className="text-base font-bold text-white/80 mb-1">No lessons on {day}</div>
-            <div className="text-sm text-white/40">Select another day to view schedule</div>
+            <div className="text-sm text-white/40">
+              {canEdit ? 'Add the first lesson for this day.' : 'Select another day to view schedule'}
+            </div>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="mt-5 inline-flex items-center justify-center rounded-lg border border-accent-400/30 bg-accent-500 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-accent-950/20 transition-all hover:bg-accent-400 hover:shadow-accent-500/20 active:bg-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-400/60 focus:ring-offset-2 focus:ring-offset-elevated"
+              >
+                + Add Lesson
+              </button>
+            )}
           </div>
         )}
 
@@ -600,6 +697,21 @@ export const TeacherTimeline: React.FC = () => {
         )}
         </div>
       </div>
+
+      {canEdit && (
+        <LessonModal
+          isOpen={isModalOpen}
+          onClose={closeModal}
+          onSave={handleSaveLesson}
+          defaultTeacherId={selectedTeacherId}
+          defaultWeek={monthWeekInfo?.weekNumber ?? week ?? 1}
+          defaultDay={dayNameMap[day] ?? day}
+          defaultMonth={monthWeekInfo?.month}
+          defaultYear={monthWeekInfo?.year}
+          defaultWeekNumber={monthWeekInfo?.weekNumber}
+          isSaving={isSaving}
+        />
+      )}
     </SidebarLayout>
   );
 };

@@ -14,16 +14,33 @@ import {
 
 import MonthGrid from "@/components/MonthGrid";
 import LessonModal from "@/components/LessonModal";
+import SchedulePageHeader from "@/components/SchedulePageHeader";
+import { type ScheduleViewMode } from "@/components/ScheduleViewSwitcher";
 import SidebarLayout from "@/components/SidebarLayout";
 import SidebarSection from "@/components/SidebarSection";
 import type { LessonOut, LessonCreate, LessonUpdate, Teacher } from "@/api/types";
 import { api, auth } from "@/api/client";
 import { getWeekForDate, getWeeksForMonth } from "@/lib/monthWeeks";
 import { getWeekNumber, setAcademicAnchor } from "@/lib/time";
+import {
+  formatScheduleDate,
+  parseScheduleDate,
+  setScheduleDateParam,
+} from "@/lib/scheduleDate";
 
 type FeedbackState = {
   type: "success" | "error";
   message: string;
+};
+
+const parseMonthYearParams = (monthValue: string | null, yearValue: string | null): Date | null => {
+  const parsedMonth = Number(monthValue);
+  const parsedYear = Number(yearValue);
+
+  if (!Number.isFinite(parsedMonth) || !Number.isFinite(parsedYear)) return null;
+  if (parsedMonth < 1 || parsedMonth > 12 || parsedYear < 1900) return null;
+
+  return new Date(parsedYear, parsedMonth - 1, 1);
 };
 
 export const MonthView: React.FC = () => {
@@ -42,9 +59,12 @@ export const MonthView: React.FC = () => {
   const [isSaving, setIsSaving] = React.useState(false);
   const [params, setParams] = useSearchParams();
   const teacherParam = params.get("teacher");
+  const monthParam = params.get("month");
+  const yearParam = params.get("year");
   const teacherId = teacherParam ? Number(teacherParam) : undefined;
-  const initialDate = React.useMemo(() => new Date(), []);
-  const [viewDate, setViewDate] = React.useState<Date>(initialDate);
+  const [viewDate, setViewDate] = React.useState<Date>(() => {
+    return parseScheduleDate(params.get("date")) ?? parseMonthYearParams(monthParam, yearParam) ?? new Date();
+  });
 
   const canEdit = React.useMemo(() => auth.hasAnyRole(["manager", "admin"]), []);
   const showAllTeachers = params.get("all") === "true" && canEdit;
@@ -53,6 +73,28 @@ export const MonthView: React.FC = () => {
 
   const month = viewDate.getMonth() + 1;
   const year = viewDate.getFullYear();
+
+  React.useEffect(() => {
+    const parsedDate = parseScheduleDate(params.get("date")) ?? parseMonthYearParams(monthParam, yearParam);
+    if (!parsedDate) return;
+
+    const parsedMonth = parsedDate.getMonth() + 1;
+    const parsedYear = parsedDate.getFullYear();
+
+    if (parsedMonth !== month || parsedYear !== year) {
+      setViewDate(parsedDate);
+    }
+  }, [month, monthParam, params, year, yearParam]);
+
+  React.useEffect(() => {
+    const nextParams = new URLSearchParams(params);
+    const nextDate = formatScheduleDate(viewDate);
+
+    if (nextParams.get("date") === nextDate && !nextParams.has("month") && !nextParams.has("year")) return;
+
+    setScheduleDateParam(nextParams, viewDate);
+    setParams(nextParams, { replace: true });
+  }, [params, setParams, viewDate]);
 
   React.useEffect(() => {
     api
@@ -141,9 +183,12 @@ export const MonthView: React.FC = () => {
   }, [isTeacherPaletteOpen]);
 
   const navigateMonth = (direction: "prev" | "next") => {
-    const newDate = new Date(viewDate);
-    newDate.setMonth(newDate.getMonth() + (direction === "prev" ? -1 : 1));
+    const newDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + (direction === "prev" ? -1 : 1), 1);
     setViewDate(newDate);
+
+    const nextParams = new URLSearchParams(params);
+    setScheduleDateParam(nextParams, newDate);
+    setParams(nextParams, { replace: true });
   };
 
   const monthWeeks = React.useMemo(() => getWeeksForMonth(year, month), [month, year]);
@@ -280,6 +325,30 @@ export const MonthView: React.FC = () => {
     setLessonToDelete(null);
     setFeedback(null);
   };
+
+  const selectToday = () => {
+    const today = new Date();
+    setViewDate(today);
+
+    const nextParams = new URLSearchParams(params);
+    setScheduleDateParam(nextParams, today);
+    setParams(nextParams, { replace: true });
+  };
+
+  const openHeaderCreateModal = () => {
+    if (!canEdit) return;
+    setSelectedDate(parseScheduleDate(params.get("date")) ?? viewDate);
+    setEditingLesson(null);
+    setIsModalOpen(true);
+    setFeedback(null);
+  };
+
+  const prepareViewParams = React.useCallback((_targetView: ScheduleViewMode, params: URLSearchParams) => {
+    params.set("date", formatScheduleDate(viewDate));
+    params.delete("week");
+    params.delete("month");
+    params.delete("year");
+  }, [viewDate]);
 
   const defaultTeacherId = !showAllTeachers ? currentTeacher?.teacher_id : undefined;
 
@@ -438,25 +507,14 @@ export const MonthView: React.FC = () => {
   return (
     <SidebarLayout sidebar={sidebarContent}>
       <div className="min-h-full bg-base">
-        {/* Content header with edit toggle */}
-        <div className="border-b border-white/[0.06] bg-surface px-4 lg:px-6 py-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-white font-display">Month View</h2>
-            {canEdit && (
-              <button
-                onClick={toggleEditMode}
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  isEditMode
-                    ? "border-accent-500 bg-accent-500 text-white"
-                    : "border-white/[0.08] text-white/50 hover:bg-white/[0.04] hover:text-white/80"
-                }`}
-              >
-                <PencilSquareIcon className="h-3.5 w-3.5" />
-                {isEditMode ? "Editing" : "Edit"}
-              </button>
-            )}
-          </div>
-        </div>
+        <SchedulePageHeader
+          activeView="month"
+          onToday={selectToday}
+          onReload={fetchLessons}
+          canAddLesson={canEdit}
+          onAddLesson={openHeaderCreateModal}
+          prepareViewParams={prepareViewParams}
+        />
 
         {error && (
           <div className="px-4 lg:px-6 pt-4">
@@ -468,6 +526,24 @@ export const MonthView: React.FC = () => {
         )}
 
         <div className="px-4 lg:px-6 py-3 sm:py-6">
+          {canEdit && (
+            <div className="mb-3 flex justify-end">
+              <button
+                type="button"
+                onClick={toggleEditMode}
+                aria-label={isEditMode ? "Disable edit mode" : "Enable edit mode"}
+                title={isEditMode ? "Disable edit mode" : "Enable edit mode"}
+                className={`inline-flex h-9 min-w-9 items-center justify-center rounded-full border px-2.5 transition-colors ${
+                  isEditMode
+                    ? "border-accent-500/60 bg-accent-500/15 text-accent-300"
+                    : "border-white/[0.08] text-white/50 hover:bg-white/[0.04] hover:text-white/80"
+                }`}
+              >
+                <PencilSquareIcon className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
           {isEditMode && canEdit && (
             <div className="mb-3 sm:mb-4 flex items-start gap-2 sm:gap-3 rounded-lg border border-accent-500/20 bg-accent-500/[0.06] px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm text-accent-300">
               <PencilSquareIcon className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0 mt-0.5" />

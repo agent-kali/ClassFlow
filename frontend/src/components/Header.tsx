@@ -19,15 +19,18 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
     navigate('/login');
   };
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) => {
+    if (path === '/') {
+      return ['/', '/week', '/month'].includes(location.pathname);
+    }
+    return location.pathname === path;
+  };
 
   const toggleMobileMenu = () => setIsMobileMenuOpen(!isMobileMenuOpen);
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
   const navItems = [
-    { path: '/', label: 'Timeline', icon: '◷', roles: ['manager', 'admin', 'teacher'] },
-    { path: '/week', label: 'Week', icon: '▦', roles: ['manager', 'admin', 'teacher'] },
-    { path: '/month', label: 'Month', icon: '▣', roles: ['manager', 'admin'] },
+    { path: '/', label: 'Schedule', icon: '◷', roles: ['manager', 'admin', 'teacher'] },
     { path: '/manage', label: 'Manage', icon: '⚙', roles: ['manager', 'admin'] },
     { path: '/resources', label: 'Resources', icon: '◈', roles: ['manager', 'admin'] },
     { path: '/admin', label: 'Admin', icon: '⛭', roles: ['admin'] },

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { auth } from './api/client';
 import type { User } from './api/types';
 
@@ -16,6 +16,34 @@ import AdminPanel from './views/AdminPanel';
 import ScheduleManager from './views/ScheduleManager';
 import CalendarManager from './views/CalendarManager';
 import ResourceManager from './views/ResourceManager';
+
+type ScheduleViewMode = 'day' | 'week' | 'month';
+
+const scheduleViews: ScheduleViewMode[] = ['day', 'week', 'month'];
+
+const ScheduleRoute: React.FC = () => {
+  const [params] = useSearchParams();
+  const requestedView = params.get('view');
+  const view = scheduleViews.includes(requestedView as ScheduleViewMode)
+    ? requestedView as ScheduleViewMode
+    : 'day';
+
+  if (view === 'week') return <WeekView />;
+  if (view === 'month') return <MonthView />;
+  return <TeacherTimeline />;
+};
+
+const buildLegacyScheduleRedirect = (search: string, view: Exclude<ScheduleViewMode, 'day'>) => {
+  const params = new URLSearchParams(search);
+  params.set('view', view);
+
+  return { pathname: '/', search: `?${params.toString()}` };
+};
+
+const LegacyScheduleRedirect: React.FC<{ view: Exclude<ScheduleViewMode, 'day'> }> = ({ view }) => {
+  const location = useLocation();
+  return <Navigate to={buildLegacyScheduleRedirect(location.search, view)} replace />;
+};
 
 const AppContent: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -57,14 +85,22 @@ const AppContent: React.FC = () => {
     );
   }
 
+  if (location.pathname === '/week') {
+    return <Navigate to={buildLegacyScheduleRedirect(location.search, 'week')} replace />;
+  }
+
+  if (location.pathname === '/month') {
+    return <Navigate to={buildLegacyScheduleRedirect(location.search, 'month')} replace />;
+  }
+
   return (
     <div className="min-h-screen bg-base">
       <Header user={user} onLogout={handleLogout} />
       <main>
         <Routes>
-          <Route path="/" element={<TeacherTimeline />} />
-          <Route path="/week" element={<WeekView />} />
-          <Route path="/month" element={<MonthView />} />
+          <Route path="/" element={<ScheduleRoute />} />
+          <Route path="/week" element={<LegacyScheduleRedirect view="week" />} />
+          <Route path="/month" element={<LegacyScheduleRedirect view="month" />} />
           
           <Route 
             path="/manage" 
