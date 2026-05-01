@@ -1,4 +1,5 @@
 import React from 'react';
+import PageContainer, { type PageSize } from './PageContainer';
 import ScheduleViewSwitcher, { type ScheduleViewMode } from './ScheduleViewSwitcher';
 
 type SchedulePageHeaderProps = {
@@ -10,6 +11,7 @@ type SchedulePageHeaderProps = {
   canAddLesson?: boolean;
   onAddLesson?: () => void;
   prepareViewParams?: (targetView: ScheduleViewMode, params: URLSearchParams) => void;
+  containerSize?: PageSize;
 };
 
 const SchedulePageHeader: React.FC<SchedulePageHeaderProps> = ({
@@ -21,10 +23,11 @@ const SchedulePageHeader: React.FC<SchedulePageHeaderProps> = ({
   canAddLesson = false,
   onAddLesson,
   prepareViewParams,
+  containerSize = 'xl',
 }) => {
   return (
     <div className="border-b border-white/[0.06] bg-surface">
-      <div className="px-4 lg:px-6 py-4 lg:py-5">
+      <PageContainer size={containerSize} className="py-4 lg:py-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-bold text-white font-display">Schedule</h2>
           <div className="flex flex-wrap items-center gap-3">
@@ -63,7 +66,7 @@ const SchedulePageHeader: React.FC<SchedulePageHeaderProps> = ({
             )}
           </div>
         </div>
-      </div>
+      </PageContainer>
     </div>
   );
 };

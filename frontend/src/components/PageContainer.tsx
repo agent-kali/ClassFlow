@@ -1,6 +1,6 @@
 import React from 'react';
 
-type PageSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
+export type PageSize = 'xs' | 'sm' | 'md' | 'lg' | 'manager' | 'xl' | 'full';
 
 interface PageContainerProps {
   size?: PageSize;

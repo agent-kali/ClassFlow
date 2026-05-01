@@ -4,6 +4,7 @@ import { api, auth } from '../api/client';
 import type { LessonCreate, LessonOut, LessonUpdate, Teacher } from '../api/types';
 import LessonCard from './LessonCard';
 import LessonModal from './LessonModal';
+import PageContainer from './PageContainer';
 import SchedulePageHeader from './SchedulePageHeader';
 import { type ScheduleViewMode } from './ScheduleViewSwitcher';
 import SidebarLayout from './SidebarLayout';
@@ -431,15 +432,7 @@ export const TeacherTimeline: React.FC = () => {
             return (
               <button
                 key={c.label}
-                className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition-all
-                  ${active
-                    ? 'border-accent-500/40 bg-accent-500/15 text-accent-300 shadow-sm'
-                    : c.value === 'E1'
-                      ? 'border-blue-500/20 text-blue-400/60 hover:bg-blue-500/10 hover:text-blue-400'
-                      : c.value === 'E2'
-                        ? 'border-emerald-500/20 text-emerald-400/60 hover:bg-emerald-500/10 hover:text-emerald-400'
-                        : 'border-white/[0.08] text-white/40 hover:text-white/70 hover:border-white/[0.12]'
-                  }`}
+                className={active ? 'pill-filled' : 'pill-outlined'}
                 onClick={() => setCampus(c.value)}
               >
                 {c.label}
@@ -465,7 +458,7 @@ export const TeacherTimeline: React.FC = () => {
           <div className="text-center min-w-0">
             <div className="text-sm font-semibold text-white/80 font-mono truncate">
               {anchorLoaded && week !== undefined && monthWeekInfo
-                ? <>Week {monthWeekInfo.weekNumber}</>
+                ? `Week ${monthWeekInfo.weekNumber}`
                 : '…'}
             </div>
             <div className="text-[11px] text-white/40 truncate">
@@ -500,18 +493,20 @@ export const TeacherTimeline: React.FC = () => {
                 onClick={() => selectDay(d)}
                 className={`w-full flex cursor-default items-center justify-between px-3 py-2 rounded-lg text-sm transition-all
                   ${active
-                    ? 'bg-accent-500/15 text-accent-300 border border-accent-500/30'
-                    : isToday
-                      ? 'bg-accent-500/[0.06] text-accent-400 border border-transparent'
-                      : empty
-                        ? 'text-white/15 opacity-50 border border-transparent'
-                        : 'text-white/60 hover:bg-white/[0.04] hover:text-white/80 border border-transparent'
+                    ? 'bg-accent-500/15 text-accent-300 border border-accent-500/30 active:bg-accent-500/25'
+                    : empty
+                      ? 'text-white/50 border border-transparent hover:bg-white/[0.04] hover:text-white/95 active:bg-white/[0.08]'
+                      : 'text-white/70 border border-transparent hover:bg-white/[0.04] hover:text-white/95 active:bg-white/[0.08]'
                   }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  {isToday && <div className="w-1.5 h-1.5 rounded-full bg-accent-400 flex-shrink-0" />}
                   <span className="font-semibold">{d}</span>
                   <span className="text-[11px] text-white/30 truncate">{getDayDate(week, d)}</span>
+                  {isToday && (
+                    <span className="pill-outlined flex-shrink-0 px-1.5 py-0 text-[10px] leading-4">
+                      Today
+                    </span>
+                  )}
                 </div>
                 {count > 0 && (
                   <span className={`text-[11px] font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0
@@ -559,11 +554,11 @@ export const TeacherTimeline: React.FC = () => {
         canAddLesson={canEdit}
         onAddLesson={openCreateModal}
         prepareViewParams={prepareViewParams}
+        containerSize="md"
       />
 
       {/* Lessons content */}
-      <div className="px-4 lg:px-6 py-4">
-        <div className="max-w-3xl">
+      <PageContainer size="md" className="py-4">
         {error && (
           <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/[0.08] p-3">
             <div className="flex items-start gap-2">
@@ -617,27 +612,28 @@ export const TeacherTimeline: React.FC = () => {
         )}
 
         {!loading && selectedTeacherId !== undefined && displayLessons.length === 0 && (
-          <div className="rounded-2xl border border-white/[0.06] bg-elevated px-6 py-12 text-center shadow-card">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-              style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.15)' }}>
-              <svg className="w-8 h-8 text-accent-400/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
+          <div className="pt-12 sm:pt-16">
+            <div className="mx-auto max-w-[480px] rounded-3xl border border-white/[0.06] bg-white/[0.03] px-6 py-10 text-center shadow-card">
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-accent-400/20 bg-gradient-to-br from-accent-500/25 via-accent-400/15 to-warm-500/20 shadow-glow-accent">
+                <svg className="h-8 w-8 text-accent-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-white">No lessons scheduled</h3>
+              <p className="mt-2 text-sm text-white/50">
+                This day is empty. Add the first lesson to get started.
+              </p>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={openCreateModal}
+                  className="mt-6 inline-flex items-center justify-center rounded-lg border border-accent-400/30 bg-accent-500 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-accent-950/20 transition-all hover:bg-accent-400 hover:shadow-accent-500/20 active:bg-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-400/60 focus:ring-offset-2 focus:ring-offset-elevated"
+                >
+                  + Add Lesson
+                </button>
+              )}
             </div>
-            <div className="text-base font-bold text-white/80 mb-1">No lessons on {day}</div>
-            <div className="text-sm text-white/40">
-              {canEdit ? 'Add the first lesson for this day.' : 'Select another day to view schedule'}
-            </div>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={openCreateModal}
-                className="mt-5 inline-flex items-center justify-center rounded-lg border border-accent-400/30 bg-accent-500 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-accent-950/20 transition-all hover:bg-accent-400 hover:shadow-accent-500/20 active:bg-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-400/60 focus:ring-offset-2 focus:ring-offset-elevated"
-              >
-                + Add Lesson
-              </button>
-            )}
           </div>
         )}
 
@@ -698,8 +694,7 @@ export const TeacherTimeline: React.FC = () => {
             })}
           </div>
         )}
-        </div>
-      </div>
+      </PageContainer>
 
       {canEdit && (
         <LessonModal

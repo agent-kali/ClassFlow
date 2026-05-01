@@ -62,6 +62,7 @@
   --content-max-width-sm: 540px;
   --content-max-width-md: 768px;
   --content-max-width-lg: 1024px;
+  --content-max-width-manager: 1200px;
   --content-max-width-xl: 1280px;
   --content-max-width-full: 1440px;
 
@@ -631,6 +632,15 @@ button, a, input, select, textarea {
     border: 1px solid var(--border-default);
   }
 
+  /* Pill variants: filled for selected/primary tags, outlined for selectable filters and role/metadata tags. */
+  .pill-filled {
+    @apply inline-flex items-center justify-center rounded-full border border-accent-500 bg-accent-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-400/60;
+  }
+
+  .pill-outlined {
+    @apply inline-flex items-center justify-center rounded-full border border-accent-400/30 bg-transparent px-2.5 py-1 text-xs font-semibold text-accent-300 transition-colors hover:border-accent-400/50 hover:bg-accent-500/[0.08] hover:text-accent-200 focus:outline-none focus:ring-2 focus:ring-accent-400/50;
+  }
+
   /* Unified select */
   .select-control {
     @apply form-control appearance-none pr-9;
@@ -672,6 +682,7 @@ textarea:-webkit-autofill {
 .page-container-sm { max-width: var(--content-max-width-sm); }
 .page-container-md { max-width: var(--content-max-width-md); }
 .page-container-lg { max-width: var(--content-max-width-lg); }
+.page-container-manager { max-width: var(--content-max-width-manager); }
 .page-container-xl { max-width: var(--content-max-width-xl); }
 .page-container-full { max-width: var(--content-max-width-full); }
 

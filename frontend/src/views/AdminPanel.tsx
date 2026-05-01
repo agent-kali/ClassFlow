@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
-import type { User, UserCreate, Teacher, UserRole } from '../api/types';
+import type { User, UserCreate, Teacher } from '../api/types';
 
 const AdminPanel: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -86,15 +86,6 @@ const AdminPanel: React.FC = () => {
       teacher_id: user.teacher_id,
     });
     setShowCreateForm(true);
-  };
-
-  const getRoleBadgeColor = (role: UserRole) => {
-    switch (role) {
-      case 'admin': return 'bg-red-500/15 text-red-300';
-      case 'manager': return 'bg-blue-500/15 text-blue-300';
-      case 'teacher': return 'bg-green-500/15 text-green-300';
-      default: return 'bg-elevated text-white/90';
-    }
   };
 
   if (loading) {
@@ -246,7 +237,7 @@ const AdminPanel: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 text-[11px] font-semibold rounded-full capitalize ${getRoleBadgeColor(user.role)}`}>
+                    <span className="pill-outlined py-0.5 text-[11px] capitalize">
                       {user.role}
                     </span>
                   </td>

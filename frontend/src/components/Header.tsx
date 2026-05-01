@@ -95,7 +95,7 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
                   {initials}
                 </div>
                 <span className="text-sm font-medium text-white/80">{user.username}</span>
-                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-accent-500/15 text-accent-300">
+                <span className="pill-outlined px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">
                   {user.role}
                 </span>
               </div>
@@ -116,7 +116,7 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
           {/* Mobile menu button */}
           <div className="flex items-center gap-2 lg:hidden">
             {user && (
-              <span className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider bg-accent-500/15 text-accent-300">
+              <span className="pill-outlined px-2 py-1 text-[10px] font-bold uppercase tracking-wider">
                 {user.role}
               </span>
             )}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import type { LessonOut, LessonCreate, LessonUpdate, TeacherOut, MonthWeek, CurrentMonthWeek } from '../api/types';
 import LessonModal from '../components/LessonModal';
+import PageContainer from '../components/PageContainer';
 import SidebarLayout from '../components/SidebarLayout';
 import SidebarSection from '../components/SidebarSection';
 
@@ -297,9 +298,11 @@ const ScheduleManager: React.FC = () => {
   if (loading) {
     return (
       <SidebarLayout sidebar={sidebarContent}>
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-accent-500"></div>
-        </div>
+        <PageContainer size="manager" className="py-6">
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-accent-500"></div>
+          </div>
+        </PageContainer>
       </SidebarLayout>
     );
   }
@@ -308,31 +311,33 @@ const ScheduleManager: React.FC = () => {
     <SidebarLayout sidebar={sidebarContent}>
       <div className="min-h-full">
         {/* Content header */}
-        <div className="border-b border-white/[0.06] bg-surface px-4 lg:px-6 py-4">
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-white font-display">Schedule Manager</h1>
-            <div className="flex gap-3">
-              <button
-                onClick={toggleBulkMode}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  bulkMode
-                    ? 'bg-accent-600 hover:bg-accent-700 text-white'
-                    : 'border border-white/[0.08] bg-white/[0.04] text-white/60 hover:text-white/90 hover:bg-white/[0.06]'
-                }`}
-              >
-                {bulkMode ? 'Exit Bulk Mode' : 'Bulk Mode'}
-              </button>
-              <button
-                onClick={handleAddLesson}
-                className="bg-accent-600 hover:bg-accent-700 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-card transition-all"
-              >
-                Add Lesson
-              </button>
+        <div className="border-b border-white/[0.06] bg-surface py-4">
+          <PageContainer size="manager">
+            <div className="flex justify-between items-center">
+              <h1 className="text-2xl font-bold text-white font-display">Schedule Manager</h1>
+              <div className="flex gap-3">
+                <button
+                  onClick={toggleBulkMode}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    bulkMode
+                      ? 'bg-accent-600 hover:bg-accent-700 text-white'
+                      : 'border border-white/[0.08] bg-white/[0.04] text-white/60 hover:text-white/90 hover:bg-white/[0.06]'
+                  }`}
+                >
+                  {bulkMode ? 'Exit Bulk Mode' : 'Bulk Mode'}
+                </button>
+                <button
+                  onClick={handleAddLesson}
+                  className="bg-accent-600 hover:bg-accent-700 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-card transition-all"
+                >
+                  Add Lesson
+                </button>
+              </div>
             </div>
-          </div>
+          </PageContainer>
         </div>
 
-        <div className="px-4 lg:px-6 py-6">
+        <PageContainer size="manager" className="py-6">
           {error && (
             <div className="bg-red-500/[0.08] border border-red-500/20 text-red-400 px-4 py-3 rounded mb-4">
               {error}
@@ -541,7 +546,7 @@ const ScheduleManager: React.FC = () => {
             defaultYear={selectedYear}
             defaultWeekNumber={selectedWeekNumber}
           />
-        </div>
+        </PageContainer>
       </div>
     </SidebarLayout>
   );

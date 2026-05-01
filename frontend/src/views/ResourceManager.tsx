@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import TeacherManager from './TeacherManager';
 import ClassManager from './ClassManager';
+import PageContainer from '../components/PageContainer';
 import SidebarLayout from '../components/SidebarLayout';
 import SidebarSection from '../components/SidebarSection';
 
@@ -47,10 +48,10 @@ const ResourceManager: React.FC = () => {
   return (
     <SidebarLayout sidebar={sidebarContent}>
       <div className="min-h-full">
-        <div className="px-4 lg:px-6 py-6">
+        <PageContainer size="manager" className="py-6">
           {activeTab === 'teachers' && <TeacherManager />}
           {activeTab === 'classes' && <ClassManager />}
-        </div>
+        </PageContainer>
       </div>
     </SidebarLayout>
   );

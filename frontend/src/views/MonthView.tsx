@@ -16,6 +16,7 @@ import MonthGrid from "@/components/MonthGrid";
 import LessonModal from "@/components/LessonModal";
 import SchedulePageHeader from "@/components/SchedulePageHeader";
 import { type ScheduleViewMode } from "@/components/ScheduleViewSwitcher";
+import PageContainer from "@/components/PageContainer";
 import SidebarLayout from "@/components/SidebarLayout";
 import SidebarSection from "@/components/SidebarSection";
 import type { LessonOut, LessonCreate, LessonUpdate, Teacher } from "@/api/types";
@@ -517,15 +518,15 @@ export const MonthView: React.FC = () => {
         />
 
         {error && (
-          <div className="px-4 lg:px-6 pt-4">
+          <PageContainer size="xl" className="pt-4">
             <div className="rounded-lg border border-red-500/20 bg-red-500/[0.08] p-4">
               <h3 className="text-sm font-medium text-red-300">Error loading schedule</h3>
               <p className="mt-1 text-sm text-red-400">{error}</p>
             </div>
-          </div>
+          </PageContainer>
         )}
 
-        <div className="px-4 lg:px-6 py-3 sm:py-6">
+        <PageContainer size="xl" className="py-3 sm:py-6">
           {canEdit && (
             <div className="mb-3 flex justify-end">
               <button
@@ -584,7 +585,7 @@ export const MonthView: React.FC = () => {
             onLessonDelete={isEditMode && canEdit ? handleLessonDelete : undefined}
             showTeacherName={showAllTeachers}
           />
-        </div>
+        </PageContainer>
 
         <LessonModal
           isOpen={isModalOpen}
