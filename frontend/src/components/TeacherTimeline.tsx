@@ -2,6 +2,7 @@ import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, auth } from '../api/client';
 import type { LessonCreate, LessonOut, LessonUpdate, Teacher } from '../api/types';
+import DemoModeBanner from './DemoModeBanner';
 import LessonCard from './LessonCard';
 import LessonModal from './LessonModal';
 import PageContainer from './PageContainer';
@@ -235,6 +236,18 @@ export const TeacherTimeline: React.FC = () => {
     updateSelectedDate(getDateForWeekDay(effectiveWeek, day));
   }, [day, updateSelectedDate]);
 
+  const handleWeekNavClick = React.useCallback((
+    event: React.MouseEvent<HTMLButtonElement>,
+    direction: 'previous' | 'next',
+  ) => {
+    const currentWeek = week === undefined ? getWeekNumber(new Date()) : week;
+    selectWeek(direction === 'previous' ? currentWeek - 1 : currentWeek + 1);
+
+    if (event.detail > 0) {
+      event.currentTarget.blur();
+    }
+  }, [selectWeek, week]);
+
   const selectDay = React.useCallback((nextDay: ScheduleDay) => {
     setDay(nextDay);
     if (week !== undefined) {
@@ -447,7 +460,7 @@ export const TeacherTimeline: React.FC = () => {
         <div className="flex items-center justify-between gap-2">
           <button
             className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/[0.08] text-white/40 hover:text-white/80 hover:border-white/[0.15] hover:bg-white/[0.04] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-            onClick={() => selectWeek(week === undefined ? getWeekNumber(new Date()) : week - 1)}
+            onClick={(event) => handleWeekNavClick(event, 'previous')}
             disabled={!anchorLoaded}
             aria-label="Previous week"
           >
@@ -467,7 +480,7 @@ export const TeacherTimeline: React.FC = () => {
           </div>
           <button
             className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-white/[0.08] text-white/40 hover:text-white/80 hover:border-white/[0.15] hover:bg-white/[0.04] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-            onClick={() => selectWeek(week === undefined ? getWeekNumber(new Date()) : week + 1)}
+            onClick={(event) => handleWeekNavClick(event, 'next')}
             disabled={!anchorLoaded}
             aria-label="Next week"
           >
@@ -520,31 +533,37 @@ export const TeacherTimeline: React.FC = () => {
         </div>
       </SidebarSection>
 
-      {/* Divider */}
-      <div className="border-t border-white/[0.06]" />
+      {displayLessons.length > 0 && (
+        <>
+          {/* Divider */}
+          <div className="border-t border-white/[0.06]" />
 
-      {/* Day summary */}
-      <SidebarSection label="Day Summary">
-        <div className="space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-white/40">Lessons</span>
-            <span className="text-sm font-semibold text-white/80">{displayLessons.length}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-white/40">Teaching time</span>
-            <span className="text-sm font-semibold text-white/80">{formatHours(totalTeachingMinutes)}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-white/40">Next lesson</span>
-            <span className="text-sm font-semibold text-white/80">{nextLessonTime || '—'}</span>
-          </div>
-        </div>
-      </SidebarSection>
+          {/* Day summary */}
+          <SidebarSection label="Day Summary">
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-white/40">Lessons</span>
+                <span className="text-sm font-semibold text-white/80">{displayLessons.length}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-white/40">Teaching time</span>
+                <span className="text-sm font-semibold text-white/80">{formatHours(totalTeachingMinutes)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-white/40">Next lesson</span>
+                <span className="text-sm font-semibold text-white/80">{nextLessonTime || '—'}</span>
+              </div>
+            </div>
+          </SidebarSection>
+        </>
+      )}
     </>
   );
 
   return (
     <SidebarLayout sidebar={sidebarContent}>
+      <DemoModeBanner containerSize="md" />
+
       <SchedulePageHeader
         activeView="day"
         onToday={selectToday}

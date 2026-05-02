@@ -70,15 +70,15 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`relative px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide transition-all duration-150
+                  className={`relative px-3 py-2 text-xs font-medium uppercase tracking-wide transition-colors duration-150
                     ${isActive(item.path)
-                      ? 'text-accent-300 bg-accent-500/10'
-                      : 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'
+                      ? 'text-white'
+                      : 'text-white/70 hover:text-white/90'
                     }`}
                 >
                   {item.label}
                   {isActive(item.path) && (
-                    <span className="absolute bottom-0 left-3 right-3 h-[2px] bg-accent-500 rounded-full" />
+                    <span className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full bg-accent-500" />
                   )}
                 </Link>
               ))}
@@ -88,7 +88,11 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
           {/* Right side — user + logout */}
           <div className="hidden sm:flex items-center gap-3">
             {user && (
-              <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.06]">
+              <button
+                type="button"
+                className="flex items-center gap-3 rounded-xl px-3 py-1.5 text-left transition-colors hover:bg-white/[0.05] focus:outline-none focus:ring-2 focus:ring-accent-400/50"
+                aria-label={`Signed in as ${user.username}, ${user.role}`}
+              >
                 {/* Avatar */}
                 <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
                   style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
@@ -98,13 +102,14 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
                 <span className="pill-outlined px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider">
                   {user.role}
                 </span>
-              </div>
+              </button>
             )}
             {/* Logout icon button */}
             <button
               onClick={handleLogout}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-all duration-150"
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-white/70 transition-colors duration-150 hover:bg-white/[0.05] hover:text-white focus:outline-none focus:ring-2 focus:ring-accent-400/50"
               title="Sign out"
+              aria-label="Sign out"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}

@@ -12,6 +12,7 @@ import {
   XCircleIcon,
 } from "@heroicons/react/24/outline";
 
+import DemoModeBanner from "@/components/DemoModeBanner";
 import MonthGrid from "@/components/MonthGrid";
 import LessonModal from "@/components/LessonModal";
 import SchedulePageHeader from "@/components/SchedulePageHeader";
@@ -508,6 +509,8 @@ export const MonthView: React.FC = () => {
   return (
     <SidebarLayout sidebar={sidebarContent}>
       <div className="min-h-full bg-base">
+        <DemoModeBanner containerSize="xl" />
+
         <SchedulePageHeader
           activeView="month"
           onToday={selectToday}
