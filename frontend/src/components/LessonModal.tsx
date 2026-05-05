@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import {
+  ChevronDownIcon,
+  ExclamationTriangleIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 import { api } from '../api/client';
 import type { LessonCreate, LessonUpdate, TeacherOut, ClassOut, LessonOut } from '../api/types';
 
@@ -26,6 +31,12 @@ interface ConflictWarning {
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const TIME_OPTIONS = Array.from({ length: 8 }, (_, index) => {
+  const totalMinutes = 17 * 60 + index * 30;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+});
 
 const DAY_SHORT_MAP: Record<string, string> = {
   monday: 'Mon',
@@ -47,6 +58,51 @@ const DAY_SHORT_MAP: Record<string, string> = {
 const normalizeDay = (day: string): string => {
   const key = day.trim().toLowerCase();
   return DAY_SHORT_MAP[key] ?? day;
+};
+
+const toFullDayName = (day: string): string => {
+  const shortDay = normalizeDay(day);
+  return DAYS.find((fullDay) => normalizeDay(fullDay) === shortDay) ?? day;
+};
+
+const toISODate = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatDisplayDate = (dateString: string): string => {
+  if (!dateString) return 'Select date';
+
+  return new Date(`${dateString}T00:00:00`).toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
+const getCalendarCells = (monthDate: Date) => {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const leadingDays = (firstDay.getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: Array<Date | null> = [];
+
+  for (let index = 0; index < leadingDays; index++) {
+    cells.push(null);
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    cells.push(new Date(year, month, day));
+  }
+
+  while (cells.length % 7 !== 0) {
+    cells.push(null);
+  }
+
+  return cells;
 };
 
 export default function LessonModal({ 
@@ -93,6 +149,14 @@ export default function LessonModal({
   const [filteredCoTeachers, setFilteredCoTeachers] = useState<TeacherOut[]>([]);
   const [filteredClasses, setFilteredClasses] = useState<ClassOut[]>([]);
   const [availableWeeks, setAvailableWeeks] = useState<Array<{value: number, label: string}>>([]);
+  const [shouldRender, setShouldRender] = useState(isOpen);
+  const [isClosing, setIsClosing] = useState(false);
+  const [showAdditionalOptions, setShowAdditionalOptions] = useState(false);
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [openTimePicker, setOpenTimePicker] = useState<'start_time' | 'end_time' | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(
+    () => new Date(defaultYear || new Date().getFullYear(), (defaultMonth || new Date().getMonth() + 1) - 1, 1)
+  );
 
   // Load data on mount
   useEffect(() => {
@@ -102,6 +166,24 @@ export default function LessonModal({
       loadWeeksForMonth(formData.year, formData.month);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setShouldRender(true);
+      setIsClosing(false);
+      return;
+    }
+
+    if (!shouldRender) return;
+
+    setIsClosing(true);
+    const timeoutId = window.setTimeout(() => {
+      setShouldRender(false);
+      setIsClosing(false);
+    }, 200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isOpen, shouldRender]);
 
   // Load weeks when month/year changes
   useEffect(() => {
@@ -117,11 +199,12 @@ export default function LessonModal({
     );
     setFilteredTeachers(filteredT);
 
-    // Filter co-teachers (Vietnamese teachers - not foreign)
+    // Filter co-teachers (Vietnamese teachers - not foreign), excluding the primary teacher.
     const filteredCT = teachers.filter(t => 
       t.name.toLowerCase().includes(searchTerm.co_teacher.toLowerCase()) &&
       t.is_active &&
-      !Boolean((t as any).is_foreign)
+      !Boolean((t as any).is_foreign) &&
+      t.teacher_id.toString() !== formData.teacher_id
     );
     setFilteredCoTeachers(filteredCT);
 
@@ -130,7 +213,24 @@ export default function LessonModal({
        c.name?.toLowerCase().includes(searchTerm.class.toLowerCase())) && c.is_active
     );
     setFilteredClasses(filteredC);
-  }, [teachers, classes, searchTerm]);
+  }, [teachers, classes, searchTerm, formData.teacher_id]);
+
+  useEffect(() => {
+    if (!formData.co_teacher_id) return;
+
+    const coTeacherIsPrimary = formData.co_teacher_id === formData.teacher_id;
+    const coTeacherIsAvailable = teachers.some((teacher) =>
+      teacher.teacher_id.toString() === formData.co_teacher_id &&
+      teacher.is_active &&
+      !Boolean((teacher as any).is_foreign) &&
+      teacher.teacher_id.toString() !== formData.teacher_id
+    );
+
+    if (coTeacherIsPrimary || !coTeacherIsAvailable) {
+      setFormData(prev => ({ ...prev, co_teacher_id: '' }));
+      setSearchTerm(prev => ({ ...prev, co_teacher: '' }));
+    }
+  }, [formData.co_teacher_id, formData.teacher_id, teachers]);
 
   // Pre-fill form for editing
   useEffect(() => {
@@ -425,14 +525,14 @@ export default function LessonModal({
 
   // Convert date parts to actual date and vice versa
   const getDateFromParts = () => {
-    const dayIndex = DAYS.indexOf(formData.day);
+    const dayIndex = DAYS.indexOf(toFullDayName(formData.day));
     // Find the first occurrence of that day in the selected week
     const firstDayOfMonth = new Date(formData.year, formData.month - 1, 1);
     const monthWeeks = getMonthWeeks(formData.year, formData.month);
     const targetWeek = monthWeeks.find(w => w.weekNumber === formData.week_number);
     
     if (targetWeek && dayIndex !== -1) {
-      const date = new Date(targetWeek.startDate);
+      const date = new Date(`${targetWeek.startDate}T00:00:00`);
       date.setDate(date.getDate() + dayIndex);
       if (date.getMonth() === formData.month - 1) {
         return date.toISOString().split('T')[0];
@@ -442,6 +542,8 @@ export default function LessonModal({
   };
 
   const setDateFromString = (dateString: string) => {
+    if (!dateString) return;
+
     const date = new Date(dateString + 'T00:00:00');
     const day = DAYS[date.getDay() === 0 ? 6 : date.getDay() - 1]; // Adjust for Sunday
     const month = date.getMonth() + 1;
@@ -462,6 +564,8 @@ export default function LessonModal({
       year,
       week_number: targetWeek?.weekNumber || 1
     }));
+    setCalendarMonth(new Date(year, month - 1, 1));
+    setIsDatePickerOpen(false);
   };
 
   // Helper to get month weeks
@@ -495,87 +599,123 @@ export default function LessonModal({
     return weeks;
   };
 
-  if (!isOpen) return null;
+  const requestClose = useCallback(() => {
+    if (isClosing) return;
+
+    setIsClosing(true);
+    window.setTimeout(() => {
+      onClose();
+    }, 200);
+  }, [isClosing, onClose]);
+
+  useEffect(() => {
+    if (!shouldRender) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        requestClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [requestClose, shouldRender]);
+
+  if (!shouldRender) return null;
 
   const selectedTeacher = teachers.find(t => t.teacher_id.toString() === formData.teacher_id);
   const selectedCoTeacher = teachers.find(t => t.teacher_id.toString() === formData.co_teacher_id);
   const selectedClass = classes.find(c => c.class_id.toString() === formData.class_id);
+  const eligibleCoTeachers = teachers.filter((teacher) =>
+    teacher.is_active &&
+    !Boolean((teacher as any).is_foreign)
+  );
+  const hasCoTeacherOptions = formData.teacher_id
+    ? eligibleCoTeachers.some((teacher) => teacher.teacher_id.toString() !== formData.teacher_id)
+    : eligibleCoTeachers.length > 1;
   const selectedDate = getDateFromParts();
+  const contextDateLabel = selectedDate
+    ? formatDisplayDate(selectedDate)
+    : toFullDayName(formData.day);
+  const calendarCells = getCalendarCells(calendarMonth);
+  const calendarMonthLabel = calendarMonth.toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  });
+  const hasRequiredFields = Boolean(
+    formData.teacher_id &&
+    formData.class_id &&
+    formData.room &&
+    formData.start_time &&
+    formData.end_time
+  );
+  const controlClass = "rounded-lg border border-white/[0.10] bg-white/[0.06] px-3 py-2 text-sm font-medium text-white/90 placeholder-white/70 outline-none transition focus:border-accent-500 focus:ring-2 focus:ring-accent-500";
+  const pillClass = "inline-flex min-h-10 items-center rounded-lg border border-white/[0.12] bg-white/[0.06] px-3 py-2 text-sm font-semibold text-white/90 transition hover:border-accent-500/50 hover:bg-white/[0.09] focus:outline-none focus:ring-2 focus:ring-accent-500";
+  const dropdownClass = "absolute left-0 z-30 mt-2 max-h-60 overflow-auto rounded-xl border border-white/[0.10] bg-elevated shadow-card";
+  const pickerButtonClass = `${controlClass} inline-flex min-h-10 items-center justify-between gap-2 text-left`;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-screen items-center justify-center px-3 py-6">
-        {/* Backdrop */}
-        <div 
-          className="modal-backdrop"
-          onClick={onClose}
-        />
-        
-        {/* Modal */}
-        <div className="modal-surface w-full max-w-2xl">
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06] bg-gradient-to-r from-orange-50 to-white">
-            <div>
-              <h3 className="text-lg font-semibold text-white">
-                {lesson ? '✏️ Edit Lesson' : '✨ Schedule a New Lesson'}
-              </h3>
-              <p className="text-sm text-white/50 mt-0.5">
-                {lesson ? 'Update lesson details' : 'Fill in the details to create a lesson'}
-              </p>
-            </div>
-            <button
-              onClick={onClose}
-              className="text-white/40 hover:text-white/60 transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+    <div className="fixed bottom-0 left-0 right-0 top-[60px] z-50 lg:left-[260px]" role="dialog" aria-modal="true" aria-labelledby="lesson-drawer-title">
+      <button
+        type="button"
+        aria-label="Close lesson drawer"
+        className={`absolute inset-0 bg-black/50 transition-opacity duration-200 ease-out ${isClosing ? 'opacity-0' : 'opacity-100'}`}
+        onClick={requestClose}
+      />
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="px-6 py-5 space-y-6">
-            {/* Status Messages */}
+      <aside
+        className={`absolute right-0 top-0 flex h-full w-full flex-col border-l border-white/[0.10] bg-surface shadow-2xl transition-transform duration-200 ease-out sm:w-[420px] ${
+          isClosing ? 'translate-x-full' : 'translate-x-0'
+        }`}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-white/[0.10] px-5 py-4">
+          <div>
+            <h3 id="lesson-drawer-title" className="text-lg font-semibold text-white">
+              {lesson ? 'Edit Lesson' : 'New Lesson'}
+            </h3>
+            <p className="mt-1 text-sm text-white/55">
+              {lesson ? `Editing ${contextDateLabel}` : `Adding to ${contextDateLabel}`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={requestClose}
+            className="rounded-lg p-2 text-white/50 transition hover:bg-white/[0.06] hover:text-white focus:outline-none focus:ring-2 focus:ring-accent-500"
+            aria-label="Close"
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
             {error && (
-              <div className="bg-red-500/[0.08] border-l-4 border-red-400 rounded-r-lg p-3">
-                <div className="flex items-start">
-                  <svg className="w-5 h-5 text-red-400 mt-0.5 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
+              <div className="rounded-xl border border-red-500/25 bg-red-500/[0.08] p-3">
+                <div className="flex items-start gap-3">
+                  <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-300" />
                   <div>
-                    <p className="font-medium text-sm text-red-300">Oops!</p>
-                    <p className="text-sm text-red-400 mt-0.5">{error}</p>
+                    <p className="text-sm font-semibold text-red-200">Could not save lesson</p>
+                    <p className="mt-0.5 text-sm text-red-300">{error}</p>
                   </div>
                 </div>
               </div>
             )}
 
             {checkingConflicts && (
-              <div className="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-3">
-                <div className="flex items-center">
-                  <svg className="animate-spin h-5 w-5 text-blue-500 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span className="text-sm text-blue-700">Checking for conflicts...</span>
-                </div>
+              <div className="rounded-xl border border-accent-500/20 bg-accent-500/[0.08] p-3 text-sm text-accent-200">
+                Checking for conflicts...
               </div>
             )}
 
             {conflicts.length > 0 && !checkingConflicts && (
-              <div className="bg-red-500/[0.08] border-l-4 border-red-400 rounded-r-lg p-3">
-                <div className="flex items-start">
-                  <svg className="w-5 h-5 text-red-400 mt-0.5 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
+              <div className="rounded-xl border border-red-500/25 bg-red-500/[0.08] p-3">
+                <div className="flex items-start gap-3">
+                  <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-300" />
                   <div className="flex-1">
-                    <h4 className="font-medium text-sm text-red-300 mb-1.5">⚠️ Scheduling Conflict</h4>
-                    <ul className="text-sm text-red-400 space-y-1">
+                    <h4 className="text-sm font-semibold text-red-200">Scheduling conflict</h4>
+                    <ul className="mt-1 space-y-1 text-sm text-red-300">
                       {conflicts.map((conflict, index) => (
-                        <li key={index} className="flex items-start">
-                          <span className="mr-2">•</span>
-                          <span>{conflict.message}</span>
-                        </li>
+                        <li key={index}>{conflict.message}</li>
                       ))}
                     </ul>
                   </div>
@@ -583,45 +723,37 @@ export default function LessonModal({
               </div>
             )}
 
-            {conflicts.length === 0 && !checkingConflicts && formData.teacher_id && formData.class_id && formData.start_time && formData.end_time && formData.room && formData.day && (
-              <div className="bg-green-500/[0.08] border-l-4 border-green-400 rounded-r-lg p-3">
-                <div className="flex items-center">
-                  <svg className="w-5 h-5 text-green-500 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span className="text-sm font-medium text-green-400">✅ All clear! Ready to schedule</span>
-                </div>
+            {conflicts.length === 0 && !checkingConflicts && hasRequiredFields && (
+              <div className="rounded-xl border border-green-500/20 bg-green-500/[0.08] px-3 py-2 text-sm font-medium text-green-300">
+                All required fields are filled and no conflicts were found.
               </div>
             )}
 
-            {/* Mad Libs Style Sentence Builder */}
-            <div className="bg-gradient-to-br from-gray-50 to-white border-2 border-white/[0.06] rounded-xl p-5 space-y-4">
-              <div className="flex flex-wrap items-center gap-2 text-white/70">
-                <span className="text-base">Schedule a lesson for</span>
-                <div className="relative inline-block">
+            <div className="rounded-2xl border border-white/[0.10] bg-white/[0.03] p-4">
+              <div className="flex flex-wrap items-center gap-2 text-base leading-10 text-white/70">
+                <span>Schedule a lesson for</span>
+                <div className="relative">
                   {selectedClass && searchTerm.class === '' ? (
                     <button
                       type="button"
-                      onClick={() => setSearchTerm(prev => ({ ...prev, class: selectedClass.code_new || '' }))}
-                      className="inline-flex items-center px-3 py-1.5 bg-accent-500/15 hover:bg-orange-200 text-accent-300 rounded-lg font-semibold text-base transition-colors border-2 border-orange-300"
+                      onClick={() => setSearchTerm(prev => ({ ...prev, class: selectedClass.code_new || selectedClass.name || '' }))}
+                      className={pillClass}
                     >
                       {selectedClass.code_new || selectedClass.name}
-                      <svg className="w-4 h-4 ml-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
+                      <ChevronDownIcon className="ml-2 h-4 w-4 text-white/50" />
                     </button>
                   ) : (
                     <>
                       <input
                         type="text"
-                        placeholder="type to search..."
+                        placeholder="Search student"
                         value={searchTerm.class}
                         onChange={(e) => handleSearchChange('class', e.target.value)}
                         onFocus={() => searchTerm.class === '' && setSearchTerm(prev => ({ ...prev, class: ' ' }))}
-                        className="px-3 py-1.5 w-48 bg-surface text-white/70 border-2 border-dashed border-white/[0.08] rounded-lg text-base focus:border-accent-500/40 focus:outline-none transition-colors"
+                        className={`${controlClass} w-56`}
                       />
                       {searchTerm.class.trim() !== '' && (
-                        <div className="absolute z-10 mt-2 w-72 dropdown-panel shadow-card">
+                        <div className={`${dropdownClass} w-72`}>
                           {filteredClasses.map(cls => (
                             <button
                               key={cls.class_id}
@@ -630,349 +762,385 @@ export default function LessonModal({
                                 handleInputChange('class_id', cls.class_id.toString());
                                 setSearchTerm(prev => ({ ...prev, class: '' }));
                               }}
-                              className={`flex w-full items-start px-4 py-2.5 text-sm ${
+                              className={`flex w-full flex-col items-start px-4 py-2.5 text-left text-sm transition ${
                                 formData.class_id === cls.class_id.toString()
                                   ? 'bg-accent-500 text-white'
-                                  : 'hover:bg-accent-500/[0.06] text-white/70'
+                                  : 'text-white/75 hover:bg-white/[0.06] hover:text-white'
                               }`}
                             >
-                              <div className="flex flex-col items-start">
-                                <span className="font-semibold">{cls.code_new || cls.name}</span>
-                                <span className="text-xs opacity-75">{cls.name}</span>
-                              </div>
+                              <span className="font-semibold">{cls.code_new || cls.name}</span>
+                              <span className="text-xs opacity-70">{cls.name}</span>
                             </button>
                           ))}
                           {filteredClasses.length === 0 && (
-                            <div className="px-4 py-3 text-sm text-white/50">No classes found</div>
+                            <div className="px-4 py-3 text-sm text-white/50">No students found</div>
                           )}
                         </div>
                       )}
                     </>
                   )}
                 </div>
-              </div>
 
-              <div className="flex flex-wrap items-center gap-2 text-white/70">
-                <span className="text-base">with</span>
-                <div className="relative inline-block">
-                  {selectedTeacher && searchTerm.teacher === '' ? (
-                    <button
-                      type="button"
-                      onClick={() => setSearchTerm(prev => ({ ...prev, teacher: selectedTeacher.name }))}
-                      className="inline-flex items-center px-3 py-1.5 bg-blue-500/15 hover:bg-blue-200 text-blue-700 rounded-lg font-semibold text-base transition-colors border-2 border-blue-300"
-                    >
-                      👨‍🏫 {selectedTeacher.name}
-                      <svg className="w-4 h-4 ml-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                  ) : (
-                    <>
-                      <input
-                        type="text"
-                        placeholder="type to search..."
-                        value={searchTerm.teacher}
-                        onChange={(e) => handleSearchChange('teacher', e.target.value)}
-                        onFocus={() => searchTerm.teacher === '' && setSearchTerm(prev => ({ ...prev, teacher: ' ' }))}
-                        className="px-3 py-1.5 w-48 bg-surface text-white/70 border-2 border-dashed border-white/[0.08] rounded-lg text-base focus:border-blue-400 focus:outline-none transition-colors"
-                      />
-                      {searchTerm.teacher.trim() !== '' && (
-                        <div className="absolute z-10 mt-2 w-64 dropdown-panel shadow-card">
-                          {filteredTeachers.map(teacher => (
-                            <button
-                              key={teacher.teacher_id}
-                              type="button"
-                              onClick={() => {
-                                handleInputChange('teacher_id', teacher.teacher_id.toString());
-                                setSearchTerm(prev => ({ ...prev, teacher: '' }));
-                              }}
-                              className={`flex w-full items-center justify-between px-4 py-2.5 text-sm ${
-                                formData.teacher_id === teacher.teacher_id.toString()
-                                  ? 'bg-blue-500 text-white'
-                                  : 'hover:bg-blue-50 text-white/70'
-                              }`}
-                            >
-                              <span className="font-medium">{teacher.name}</span>
-                              {formData.teacher_id === teacher.teacher_id.toString() && (
-                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
+                <div className="inline-flex flex-wrap items-center gap-2 align-middle">
+                  <span>with</span>
+                  <div className="inline-flex flex-wrap items-center gap-2">
+                    <div className="relative">
+                      {selectedTeacher && searchTerm.teacher === '' ? (
+                        <button
+                          type="button"
+                          onClick={() => setSearchTerm(prev => ({ ...prev, teacher: selectedTeacher.name }))}
+                          className={pillClass}
+                        >
+                          {selectedTeacher.name}
+                          <ChevronDownIcon className="ml-2 h-4 w-4 text-white/50" />
+                        </button>
+                      ) : (
+                        <>
+                          <input
+                            type="text"
+                            placeholder="Search teacher"
+                            value={searchTerm.teacher}
+                            onChange={(e) => handleSearchChange('teacher', e.target.value)}
+                            onFocus={() => searchTerm.teacher === '' && setSearchTerm(prev => ({ ...prev, teacher: ' ' }))}
+                            className={`${controlClass} w-52`}
+                          />
+                          {searchTerm.teacher.trim() !== '' && (
+                            <div className={`${dropdownClass} w-64`}>
+                              {filteredTeachers.map(teacher => (
+                                <button
+                                  key={teacher.teacher_id}
+                                  type="button"
+                                  onClick={() => {
+                                    handleInputChange('teacher_id', teacher.teacher_id.toString());
+                                    setSearchTerm(prev => ({ ...prev, teacher: '' }));
+                                  }}
+                                  className={`flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition ${
+                                    formData.teacher_id === teacher.teacher_id.toString()
+                                      ? 'bg-accent-500 text-white'
+                                      : 'text-white/75 hover:bg-white/[0.06] hover:text-white'
+                                  }`}
+                                >
+                                  <span className="font-medium">{teacher.name}</span>
+                                </button>
+                              ))}
+                              {filteredTeachers.length === 0 && (
+                                <div className="px-4 py-3 text-sm text-white/50">No teachers found</div>
                               )}
-                            </button>
-                          ))}
-                          {filteredTeachers.length === 0 && (
-                            <div className="px-4 py-3 text-sm text-white/50">No teachers found</div>
+                            </div>
                           )}
-                        </div>
+                        </>
                       )}
-                    </>
-                  )}
-                </div>
-                {selectedCoTeacher && searchTerm.co_teacher === '' ? (
-                  <>
-                    <span className="text-base">&</span>
-                    <button
-                      type="button"
-                      onClick={() => setSearchTerm(prev => ({ ...prev, co_teacher: selectedCoTeacher.name }))}
-                      className="inline-flex items-center px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg font-semibold text-base transition-colors border-2 border-purple-300"
-                    >
-                      👥 {selectedCoTeacher.name}
-                      <svg className="w-4 h-4 ml-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                  </>
-                ) : searchTerm.co_teacher !== '' ? (
-                  <>
-                    <span className="text-base">&</span>
-                    <div className="relative inline-block">
-                      <input
-                        type="text"
-                        placeholder="co-teacher..."
-                        value={searchTerm.co_teacher}
-                        onChange={(e) => handleSearchChange('co_teacher', e.target.value)}
-                        className="px-3 py-1.5 w-40 bg-surface text-white/70 border-2 border-dashed border-white/[0.08] rounded-lg text-base focus:border-purple-400 focus:outline-none transition-colors"
-                      />
-                      {searchTerm.co_teacher.trim() !== '' && (
-                        <div className="absolute z-10 mt-2 w-64 dropdown-panel shadow-card">
-                          {filteredCoTeachers.map(teacher => (
+                    </div>
+
+                    {(selectedCoTeacher || searchTerm.co_teacher !== '') ? (
+                      <div className="inline-flex flex-wrap items-center gap-2">
+                        <span className="text-white/55">and</span>
+                        <div className="relative">
+                          {selectedCoTeacher && searchTerm.co_teacher === '' ? (
                             <button
-                              key={teacher.teacher_id}
                               type="button"
-                              onClick={() => {
-                                handleInputChange('co_teacher_id', teacher.teacher_id.toString());
-                                setSearchTerm(prev => ({ ...prev, co_teacher: '' }));
-                              }}
-                              className={`flex w-full items-center px-4 py-2.5 text-sm ${
-                                formData.co_teacher_id === teacher.teacher_id.toString()
-                                  ? 'bg-purple-600/[0.08]0 text-white'
-                                  : 'hover:bg-purple-600/[0.08] text-white/70'
-                              }`}
+                              onClick={() => setSearchTerm(prev => ({ ...prev, co_teacher: selectedCoTeacher.name }))}
+                              className={pillClass}
                             >
-                              <span className="font-medium">{teacher.name}</span>
+                              {selectedCoTeacher.name}
+                              <ChevronDownIcon className="ml-2 h-4 w-4 text-white/50" />
                             </button>
-                          ))}
-                          {filteredCoTeachers.length === 0 && (
-                            <div className="px-4 py-3 text-sm text-white/50">No co-teachers found</div>
+                          ) : (
+                            <>
+                              <input
+                                type="text"
+                                placeholder="Co-teacher"
+                                value={searchTerm.co_teacher}
+                                onChange={(e) => handleSearchChange('co_teacher', e.target.value)}
+                                className={`${controlClass} w-48`}
+                              />
+                              {searchTerm.co_teacher.trim() !== '' && (
+                                <div className={`${dropdownClass} w-64`}>
+                                  {filteredCoTeachers.map(teacher => (
+                                    <button
+                                      key={teacher.teacher_id}
+                                      type="button"
+                                      onClick={() => {
+                                        handleInputChange('co_teacher_id', teacher.teacher_id.toString());
+                                        setSearchTerm(prev => ({ ...prev, co_teacher: '' }));
+                                      }}
+                                      className={`flex w-full items-center px-4 py-2.5 text-left text-sm transition ${
+                                        formData.co_teacher_id === teacher.teacher_id.toString()
+                                          ? 'bg-accent-500 text-white'
+                                          : 'text-white/75 hover:bg-white/[0.06] hover:text-white'
+                                      }`}
+                                    >
+                                      <span className="font-medium">{teacher.name}</span>
+                                    </button>
+                                  ))}
+                                  {filteredCoTeachers.length === 0 && (
+                                    <div className="px-4 py-3 text-sm text-white/50">No co-teachers found</div>
+                                  )}
+                                </div>
+                              )}
+                            </>
                           )}
                         </div>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setSearchTerm(prev => ({ ...prev, co_teacher: ' ' }))}
-                    className="text-sm text-white/40 hover:text-white/60 underline transition-colors"
-                  >
-                    + co-teacher
-                  </button>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 text-white/70">
-                <span className="text-base">in room</span>
-                <div className="relative inline-block">
-                  <select
-                    value={formData.room}
-                    onChange={(e) => handleInputChange('room', e.target.value)}
-                    className={`inline-flex px-3 py-1.5 pr-8 rounded-lg font-semibold text-base border-2 transition-colors appearance-none cursor-pointer ${
-                      formData.room
-                        ? 'bg-teal-100 text-teal-700 border-teal-300'
-                        : 'bg-surface text-white/40 border-dashed border-white/[0.08]'
-                    }`}
-                  >
-                    <option value="">select room</option>
-                    {rooms.map(room => (
-                      <option key={room} value={room}>{room}</option>
-                    ))}
-                  </select>
-                  <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-                {selectedDate && (
-                  <>
-                    <span className="text-base">on</span>
-                    <span className="px-3 py-1.5 bg-pink-100 text-pink-700 border-2 border-pink-300 rounded-lg font-semibold text-base">
-                      📅 {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { 
-                        weekday: 'short', 
-                        month: 'short', 
-                        day: 'numeric'
-                      })}
-                    </span>
-                  </>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 text-white/70">
-                <span className="text-base">from</span>
-                <input
-                  type="time"
-                  value={formData.start_time}
-                  onChange={(e) => handleInputChange('start_time', e.target.value)}
-                  min="17:00"
-                  max="20:30"
-                  className={`inline-flex px-3 py-1.5 rounded-lg font-semibold text-base border-2 transition-colors cursor-pointer ${
-                    formData.start_time
-                      ? 'bg-green-500/15 text-green-400 border-green-300'
-                      : 'bg-surface text-white/40 border-dashed border-white/[0.08]'
-                  }`}
-                  required
-                />
-                <span className="text-base">to</span>
-                <input
-                  type="time"
-                  value={formData.end_time}
-                  onChange={(e) => handleInputChange('end_time', e.target.value)}
-                  min="17:00"
-                  max="20:30"
-                  className={`inline-flex px-3 py-1.5 rounded-lg font-semibold text-base border-2 transition-colors cursor-pointer ${
-                    formData.end_time
-                      ? 'bg-green-500/15 text-green-400 border-green-300'
-                      : 'bg-surface text-white/40 border-dashed border-white/[0.08]'
-                  }`}
-                  required
-                />
-                <span className="text-xs text-white/50">(17:00 - 20:30 only)</span>
-              </div>
-
-              {/* Visual Summary */}
-              {(selectedClass || selectedTeacher || formData.room || formData.start_time) && (
-                <div className="mt-4 pt-4 border-t border-white/[0.06]">
-                  <div className="flex items-start">
-                    <svg className="w-5 h-5 text-white/40 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                    <div className="text-sm text-white/60 space-y-1">
-                      <p className="font-medium text-white/70">Quick Summary:</p>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                        <div className="flex items-center">
-                          <span className="w-16 text-white/50">Date:</span>
-                          <span className="font-medium text-white">
-                            {selectedDate ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { 
-                              weekday: 'short', 
-                              month: 'short', 
-                              day: 'numeric',
-                              year: 'numeric'
-                            }) : formData.day}
-                          </span>
-                        </div>
-                        {selectedClass && (
-                          <div className="flex items-center">
-                            <span className="w-16 text-white/50">Class:</span>
-                            <span className="font-medium text-white">{selectedClass.code_new || selectedClass.name}</span>
-                          </div>
-                        )}
-                        {selectedTeacher && (
-                          <div className="flex items-center">
-                            <span className="w-16 text-white/50">Teacher:</span>
-                            <span className="font-medium text-white">{selectedTeacher.name}</span>
-                          </div>
-                        )}
-                        {selectedCoTeacher && (
-                          <div className="flex items-center">
-                            <span className="w-16 text-white/50">Co-teach:</span>
-                            <span className="font-medium text-white">{selectedCoTeacher.name}</span>
-                          </div>
-                        )}
-                        {formData.room && (
-                          <div className="flex items-center">
-                            <span className="w-16 text-white/50">Room:</span>
-                            <span className="font-medium text-white">{formData.room}</span>
-                          </div>
-                        )}
-                        {(formData.start_time || formData.end_time) && (
-                          <div className="flex items-center">
-                            <span className="w-16 text-white/50">Time:</span>
-                            <span className="font-medium text-white">
-                              {formData.start_time || '--:--'} - {formData.end_time || '--:--'}
-                            </span>
-                          </div>
-                        )}
                       </div>
-                    </div>
+                    ) : hasCoTeacherOptions ? (
+                      <button
+                        type="button"
+                        onClick={() => setSearchTerm(prev => ({ ...prev, co_teacher: ' ' }))}
+                        className="inline-flex items-center rounded-md px-1.5 py-1 text-xs font-semibold text-accent-300 underline underline-offset-4 transition hover:text-accent-300/80 focus:outline-none focus:ring-2 focus:ring-accent-500"
+                      >
+                        + co-teacher
+                      </button>
+                    ) : null}
                   </div>
                 </div>
-              )}
+
+                <span>in room</span>
+                <select
+                  value={formData.room}
+                  onChange={(e) => handleInputChange('room', e.target.value)}
+                  className={`${controlClass} min-w-32 appearance-none pr-8`}
+                >
+                  <option value="">Select room</option>
+                  {rooms.map(room => (
+                    <option key={room} value={room}>{room}</option>
+                  ))}
+                </select>
+
+                <span>on</span>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedDate) {
+                        const date = new Date(`${selectedDate}T00:00:00`);
+                        setCalendarMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+                      }
+                      setIsDatePickerOpen((prev) => !prev);
+                      setOpenTimePicker(null);
+                    }}
+                    className={`${pickerButtonClass} w-48`}
+                  >
+                    <span>{formatDisplayDate(selectedDate)}</span>
+                    <ChevronDownIcon className={`h-4 w-4 text-white/50 transition-transform ${isDatePickerOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isDatePickerOpen && (
+                    <div className="absolute left-0 z-40 mt-2 w-72 rounded-2xl border border-white/[0.10] bg-elevated p-3 shadow-card">
+                      <div className="mb-3 flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                          className="rounded-lg px-2 py-1 text-sm text-white/60 transition hover:bg-white/[0.06] hover:text-white"
+                          aria-label="Previous month"
+                        >
+                          Prev
+                        </button>
+                        <div className="text-sm font-semibold text-white/85">{calendarMonthLabel}</div>
+                        <button
+                          type="button"
+                          onClick={() => setCalendarMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                          className="rounded-lg px-2 py-1 text-sm text-white/60 transition hover:bg-white/[0.06] hover:text-white"
+                          aria-label="Next month"
+                        >
+                          Next
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase tracking-wide text-white/35">
+                        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, index) => (
+                          <div key={`${day}-${index}`} className="py-1">{day}</div>
+                        ))}
+                      </div>
+                      <div className="mt-1 grid grid-cols-7 gap-1">
+                        {calendarCells.map((date, index) => {
+                          const dateValue = date ? toISODate(date) : '';
+                          const isSelected = dateValue === selectedDate;
+
+                          return date ? (
+                            <button
+                              key={dateValue}
+                              type="button"
+                              onClick={() => setDateFromString(dateValue)}
+                              className={`flex h-8 items-center justify-center rounded-lg text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-accent-500 ${
+                                isSelected
+                                  ? 'bg-accent-500 text-white'
+                                  : 'text-white/75 hover:bg-white/[0.06] hover:text-white'
+                              }`}
+                            >
+                              {date.getDate()}
+                            </button>
+                          ) : (
+                            <div key={`empty-${index}`} className="h-8" />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <span>from</span>
+                <div className="grid w-full grid-cols-2 gap-2 sm:w-auto">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenTimePicker((prev) => prev === 'start_time' ? null : 'start_time');
+                        setIsDatePickerOpen(false);
+                      }}
+                      className={`${pickerButtonClass} w-full min-w-28`}
+                    >
+                      <span>{formData.start_time || '--:--'}</span>
+                      <ChevronDownIcon className={`h-4 w-4 text-white/50 transition-transform ${openTimePicker === 'start_time' ? 'rotate-180' : ''}`} />
+                    </button>
+                    {openTimePicker === 'start_time' && (
+                      <div className="absolute left-0 z-40 mt-2 max-h-56 w-full min-w-28 overflow-auto rounded-xl border border-white/[0.10] bg-elevated p-1 shadow-card">
+                        {TIME_OPTIONS.map((time) => (
+                          <button
+                            key={`start-${time}`}
+                            type="button"
+                            onClick={() => {
+                              handleInputChange('start_time', time);
+                              setOpenTimePicker(null);
+                            }}
+                            className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
+                              formData.start_time === time
+                                ? 'bg-accent-500 text-white'
+                                : 'text-white/75 hover:bg-white/[0.06] hover:text-white'
+                            }`}
+                          >
+                            {time}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenTimePicker((prev) => prev === 'end_time' ? null : 'end_time');
+                        setIsDatePickerOpen(false);
+                      }}
+                      className={`${pickerButtonClass} w-full min-w-28`}
+                    >
+                      <span>{formData.end_time || '--:--'}</span>
+                      <ChevronDownIcon className={`h-4 w-4 text-white/50 transition-transform ${openTimePicker === 'end_time' ? 'rotate-180' : ''}`} />
+                    </button>
+                    {openTimePicker === 'end_time' && (
+                      <div className="absolute left-0 z-40 mt-2 max-h-56 w-full min-w-28 overflow-auto rounded-xl border border-white/[0.10] bg-elevated p-1 shadow-card">
+                        {TIME_OPTIONS.map((time) => (
+                          <button
+                            key={`end-${time}`}
+                            type="button"
+                            onClick={() => {
+                              handleInputChange('end_time', time);
+                              setOpenTimePicker(null);
+                            }}
+                            className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
+                              formData.end_time === time
+                                ? 'bg-accent-500 text-white'
+                                : 'text-white/75 hover:bg-white/[0.06] hover:text-white'
+                            }`}
+                          >
+                            {time}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <span className="text-sm text-white/45">to finish between 17:00 and 20:30</span>
+              </div>
             </div>
 
-            {/* Collapsible Advanced Section */}
-            <details className="group">
-              <summary className="flex items-center justify-between cursor-pointer text-sm text-white/60 hover:text-white transition-colors py-2 px-3 rounded-lg hover:bg-base">
-                <span className="flex items-center">
-                  <svg className="w-4 h-4 mr-2 group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                  Additional options
-                </span>
-                <span className="text-xs text-white/40">Notes, etc.</span>
-              </summary>
-              <div className="mt-3 space-y-3 pl-6">
-                <div>
-                  <label className="flex items-center text-sm font-medium text-white/70 mb-1.5">
-                    <svg className="w-4 h-4 mr-2 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                    </svg>
-                    Notes (Optional)
-                  </label>
+            {(selectedClass || selectedTeacher || selectedCoTeacher || formData.room || formData.start_time || formData.end_time) && (
+              <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-white/35">Summary</p>
+                <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div>
+                    <dt className="text-white/40">Date</dt>
+                    <dd className="font-medium text-white/85">{contextDateLabel}</dd>
+                  </div>
+                  {selectedClass && (
+                    <div>
+                      <dt className="text-white/40">Student</dt>
+                      <dd className="font-medium text-white/85">{selectedClass.code_new || selectedClass.name}</dd>
+                    </div>
+                  )}
+                  {selectedTeacher && (
+                    <div>
+                      <dt className="text-white/40">Teacher</dt>
+                      <dd className="font-medium text-white/85">{selectedTeacher.name}</dd>
+                    </div>
+                  )}
+                  {selectedCoTeacher && (
+                    <div>
+                      <dt className="text-white/40">Co-teacher</dt>
+                      <dd className="font-medium text-white/85">{selectedCoTeacher.name}</dd>
+                    </div>
+                  )}
+                  {formData.room && (
+                    <div>
+                      <dt className="text-white/40">Room</dt>
+                      <dd className="font-medium text-white/85">{formData.room}</dd>
+                    </div>
+                  )}
+                  {(formData.start_time || formData.end_time) && (
+                    <div>
+                      <dt className="text-white/40">Time</dt>
+                      <dd className="font-medium text-white/85">{formData.start_time || '--:--'} - {formData.end_time || '--:--'}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            )}
+
+            {showAdditionalOptions && (
+              <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4">
+                <label className="block text-sm font-medium text-white/75">
+                  Notes
                   <textarea
                     value={formData.notes}
                     onChange={(e) => handleInputChange('notes', e.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-white/[0.08] rounded-lg focus:ring-2 focus:ring-accent-500 focus:border-accent-500 resize-none text-sm"
-                    placeholder="Any additional information about this lesson..."
+                    rows={4}
+                    className={`${controlClass} mt-2 min-h-[96px] w-full resize-none`}
+                    placeholder="Any additional information about this lesson"
                   />
-                </div>
+                </label>
               </div>
-            </details>
+            )}
+          </div>
 
-            {/* Action Buttons */}
-            <div className="flex items-center justify-between pt-4 border-t border-white/[0.06]">
-              <div className="text-xs text-white/50">
-                {formData.teacher_id && formData.class_id && formData.room && formData.start_time && formData.end_time ? (
-                  <span className="flex items-center text-green-600">
-                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                    All required fields filled
-                  </span>
-                ) : (
-                  <span>Please fill in all required fields</span>
-                )}
-              </div>
-              <div className="flex space-x-3">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-5 py-2.5 text-sm font-medium text-white/70 bg-surface border-2 border-white/[0.08] rounded-lg hover:bg-base hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent-500 transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving || loading || conflicts.length > 0}
-                  className="px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-orange-600 to-orange-500 border border-transparent rounded-lg hover:from-orange-700 hover:to-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-400 transition-all shadow-glass hover:shadow-md"
-                >
-                  {isSaving || loading ? (
-                    <span className="flex items-center">
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Saving...
-                    </span>
-                  ) : (
-                    <span className="flex items-center">
-                      {lesson ? '💾 Update Lesson' : '✨ Create Lesson'}
-                    </span>
-                  )}
-                </button>
-              </div>
+          <div className="sticky bottom-0 flex flex-col gap-3 border-t border-white/[0.10] bg-surface/95 px-5 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              onClick={() => setShowAdditionalOptions((prev) => !prev)}
+              className="inline-flex items-center gap-2 text-sm font-medium text-white/45 transition hover:text-white/75"
+            >
+              <ChevronDownIcon className={`h-4 w-4 transition-transform ${showAdditionalOptions ? 'rotate-180' : ''}`} />
+              Additional options
+            </button>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={requestClose}
+                className="rounded-lg border border-white/[0.12] bg-transparent px-4 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/[0.06] hover:text-white focus:outline-none focus:ring-2 focus:ring-accent-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving || loading || conflicts.length > 0}
+                className="rounded-lg border border-accent-400/30 bg-accent-500 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-accent-950/20 transition hover:bg-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-400/60 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSaving || loading ? 'Saving...' : lesson ? 'Update Lesson' : 'Create Lesson'}
+              </button>
             </div>
-          </form>
-        </div>
-      </div>
+          </div>
+        </form>
+      </aside>
     </div>
   );
 }

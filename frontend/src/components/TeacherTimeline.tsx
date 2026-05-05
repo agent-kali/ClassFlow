@@ -2,7 +2,6 @@ import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, auth } from '../api/client';
 import type { LessonCreate, LessonOut, LessonUpdate, Teacher } from '../api/types';
-import DemoModeBanner from './DemoModeBanner';
 import LessonCard from './LessonCard';
 import LessonModal from './LessonModal';
 import PageContainer from './PageContainer';
@@ -562,8 +561,6 @@ export const TeacherTimeline: React.FC = () => {
 
   return (
     <SidebarLayout sidebar={sidebarContent}>
-      <DemoModeBanner containerSize="md" />
-
       <SchedulePageHeader
         activeView="day"
         onToday={selectToday}

@@ -3,7 +3,6 @@ import { api, auth } from '@/api/client';
 import type { LessonOut, LessonCreate, LessonUpdate, Teacher } from '@/api/types';
 import { setAcademicAnchor, getWeekNumber, getWeekStart } from '@/lib/time';
 import { getWeekForDate } from '@/lib/monthWeeks';
-import DemoModeBanner from '@/components/DemoModeBanner';
 import PeriodGrid from '@/components/PeriodGrid';
 import SchedulePageHeader from '@/components/SchedulePageHeader';
 import { type ScheduleViewMode } from '@/components/ScheduleViewSwitcher';
@@ -567,8 +566,6 @@ export const WeekView: React.FC = () => {
   return (
     <SidebarLayout sidebar={sidebarContent}>
       <div className="min-h-full bg-base">
-        <DemoModeBanner containerSize="xl" />
-
         <SchedulePageHeader
           activeView="week"
           onToday={selectToday}

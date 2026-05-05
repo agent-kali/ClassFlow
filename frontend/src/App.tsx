@@ -8,6 +8,7 @@ import Header from './components/Header';
 import LoginForm from './components/LoginForm';
 import ProtectedRoute from './components/ProtectedRoute';
 import TeacherTimeline from './components/TeacherTimeline';
+import DemoModeBanner from './components/DemoModeBanner';
 
 // Views
 import WeekView from './views/WeekView';
@@ -96,6 +97,7 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-base">
       <Header user={user} onLogout={handleLogout} />
+      <DemoModeBanner containerSize="full" />
       <main>
         <Routes>
           <Route path="/" element={<ScheduleRoute />} />
