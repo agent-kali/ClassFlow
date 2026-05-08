@@ -570,7 +570,6 @@ export const TeacherTimeline: React.FC = () => {
         canAddLesson={canEdit}
         onAddLesson={openCreateModal}
         prepareViewParams={prepareViewParams}
-        containerSize="md"
       />
 
       {/* Lessons content */}
